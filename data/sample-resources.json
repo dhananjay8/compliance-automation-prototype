@@ -1,0 +1,84 @@
+[
+  {
+    "id": "res-user-001",
+    "integration_id": "int-okta-001",
+    "resource_type": "UserAccount",
+    "external_id": "alice@example.com",
+    "data": {
+      "email": "alice@example.com",
+      "active": true,
+      "mfa_enabled": true,
+      "groups": [
+        "engineering",
+        "admins"
+      ],
+      "department": "engineering",
+      "employment_status": "active",
+      "last_sign_in": "2024-06-15T08:30:00Z"
+    },
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "res-user-002",
+    "integration_id": "int-okta-001",
+    "resource_type": "UserAccount",
+    "external_id": "bob@example.com",
+    "data": {
+      "email": "bob@example.com",
+      "active": true,
+      "mfa_enabled": false,
+      "groups": [
+        "finance"
+      ],
+      "department": "finance",
+      "employment_status": "active",
+      "last_sign_in": "2024-06-18T09:00:00Z"
+    },
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "res-comp-001",
+    "integration_id": "int-jamf-001",
+    "resource_type": "Computer",
+    "external_id": "C02X1234",
+    "data": {
+      "serial": "C02X1234",
+      "os": "macOS",
+      "os_version": "14.5",
+      "disk_encrypted": true,
+      "owner_email": "alice@example.com",
+      "last_seen": "2024-06-20T11:00:00Z",
+      "agent_version": "10.5.0"
+    },
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "res-vuln-001",
+    "integration_id": "int-crowdstrike-001",
+    "resource_type": "Vulnerability",
+    "external_id": "CVE-2024-1234",
+    "data": {
+      "cve_id": "CVE-2024-1234",
+      "severity": "critical",
+      "asset_id": "i-0abcd1234",
+      "status": "open",
+      "first_seen": "2024-06-01T00:00:00Z",
+      "resolved_at": null
+    },
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "res-train-001",
+    "integration_id": "int-knowbe4-001",
+    "resource_type": "TrainingRecord",
+    "external_id": "alice-security-2024",
+    "data": {
+      "user_email": "alice@example.com",
+      "course_name": "Security Awareness 2024",
+      "completed_at": "2024-01-15T10:00:00Z",
+      "score": 92,
+      "valid_until": "2025-01-15T00:00:00Z"
+    },
+    "collected_at": "2024-06-20T12:00:00Z"
+  }
+]

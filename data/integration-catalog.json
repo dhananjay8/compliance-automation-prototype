@@ -1,0 +1,254 @@
+[
+  {
+    "id": "conn-aws",
+    "name": "AWS",
+    "category": "Cloud Provider",
+    "auth_types": [
+      "cross_account_role",
+      "access_key"
+    ],
+    "resource_types": [
+      "UserAccount",
+      "Computer",
+      "StorageBucket",
+      "ComputeInstance"
+    ]
+  },
+  {
+    "id": "conn-azure",
+    "name": "Azure",
+    "category": "Cloud Provider",
+    "auth_types": [
+      "service_principal"
+    ],
+    "resource_types": [
+      "UserAccount",
+      "StorageAccount",
+      "VirtualMachine"
+    ]
+  },
+  {
+    "id": "conn-gcp",
+    "name": "GCP",
+    "category": "Cloud Provider",
+    "auth_types": [
+      "service_account"
+    ],
+    "resource_types": [
+      "UserAccount",
+      "Bucket",
+      "ComputeInstance"
+    ]
+  },
+  {
+    "id": "conn-okta",
+    "name": "Okta",
+    "category": "Identity Provider",
+    "auth_types": [
+      "oauth_private_key",
+      "api_token"
+    ],
+    "resource_types": [
+      "UserAccount",
+      "Group",
+      "Application"
+    ]
+  },
+  {
+    "id": "conn-google-workspace",
+    "name": "Google Workspace",
+    "category": "Identity Provider",
+    "auth_types": [
+      "service_account"
+    ],
+    "resource_types": [
+      "UserAccount",
+      "Group",
+      "Device"
+    ]
+  },
+  {
+    "id": "conn-azure-ad",
+    "name": "Azure AD",
+    "category": "Identity Provider",
+    "auth_types": [
+      "service_principal"
+    ],
+    "resource_types": [
+      "UserAccount",
+      "Group"
+    ]
+  },
+  {
+    "id": "conn-github",
+    "name": "GitHub",
+    "category": "Code Repository",
+    "auth_types": [
+      "github_app",
+      "oauth"
+    ],
+    "resource_types": [
+      "Repository",
+      "PullRequest",
+      "OrganizationMember"
+    ]
+  },
+  {
+    "id": "conn-gitlab",
+    "name": "GitLab",
+    "category": "Code Repository",
+    "auth_types": [
+      "oauth",
+      "personal_token"
+    ],
+    "resource_types": [
+      "Repository",
+      "MergeRequest"
+    ]
+  },
+  {
+    "id": "conn-jira",
+    "name": "Jira",
+    "category": "Ticketing",
+    "auth_types": [
+      "api_token",
+      "oauth"
+    ],
+    "resource_types": [
+      "Ticket",
+      "Project"
+    ]
+  },
+  {
+    "id": "conn-servicenow",
+    "name": "ServiceNow",
+    "category": "Ticketing",
+    "auth_types": [
+      "oauth",
+      "basic"
+    ],
+    "resource_types": [
+      "Ticket",
+      "ChangeRequest"
+    ]
+  },
+  {
+    "id": "conn-slack",
+    "name": "Slack",
+    "category": "Communication",
+    "auth_types": [
+      "oauth"
+    ],
+    "resource_types": [
+      "WorkspaceUser",
+      "Channel"
+    ]
+  },
+  {
+    "id": "conn-jamf",
+    "name": "Jamf",
+    "category": "MDM",
+    "auth_types": [
+      "api_token"
+    ],
+    "resource_types": [
+      "Computer",
+      "MobileDevice"
+    ]
+  },
+  {
+    "id": "conn-intune",
+    "name": "Intune",
+    "category": "MDM",
+    "auth_types": [
+      "service_principal"
+    ],
+    "resource_types": [
+      "Computer",
+      "MobileDevice"
+    ]
+  },
+  {
+    "id": "conn-crowdstrike",
+    "name": "CrowdStrike",
+    "category": "Endpoint Security",
+    "auth_types": [
+      "api_token"
+    ],
+    "resource_types": [
+      "Computer",
+      "Vulnerability"
+    ]
+  },
+  {
+    "id": "conn-sentinelone",
+    "name": "SentinelOne",
+    "category": "Endpoint Security",
+    "auth_types": [
+      "api_token"
+    ],
+    "resource_types": [
+      "Computer",
+      "Vulnerability"
+    ]
+  },
+  {
+    "id": "conn-orca",
+    "name": "Orca Security",
+    "category": "Vulnerability Management",
+    "auth_types": [
+      "api_token"
+    ],
+    "resource_types": [
+      "Vulnerability",
+      "CloudAsset"
+    ]
+  },
+  {
+    "id": "conn-knowbe4",
+    "name": "KnowBe4",
+    "category": "Training",
+    "auth_types": [
+      "api_token"
+    ],
+    "resource_types": [
+      "TrainingRecord"
+    ]
+  },
+  {
+    "id": "conn-workday",
+    "name": "Workday",
+    "category": "HRIS",
+    "auth_types": [
+      "oauth"
+    ],
+    "resource_types": [
+      "Employee",
+      "Department"
+    ]
+  },
+  {
+    "id": "conn-bamboohr",
+    "name": "BambooHR",
+    "category": "HRIS",
+    "auth_types": [
+      "api_token"
+    ],
+    "resource_types": [
+      "Employee"
+    ]
+  },
+  {
+    "id": "conn-custom",
+    "name": "Custom Integration",
+    "category": "Custom",
+    "auth_types": [
+      "oauth",
+      "api_token",
+      "webhook"
+    ],
+    "resource_types": [
+      "CustomResource"
+    ]
+  }
+]

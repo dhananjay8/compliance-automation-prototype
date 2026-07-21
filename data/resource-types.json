@@ -1,0 +1,51 @@
+[
+  {
+    "id": "rt-user-account",
+    "name": "UserAccount",
+    "schema": {
+      "email": "string",
+      "active": "boolean",
+      "mfa_enabled": "boolean",
+      "groups": "array<string>",
+      "department": "string",
+      "employment_status": "string",
+      "last_sign_in": "timestamp"
+    }
+  },
+  {
+    "id": "rt-computer",
+    "name": "Computer",
+    "schema": {
+      "serial": "string",
+      "os": "string",
+      "os_version": "string",
+      "disk_encrypted": "boolean",
+      "owner_email": "string",
+      "last_seen": "timestamp",
+      "agent_version": "string"
+    }
+  },
+  {
+    "id": "rt-vulnerability",
+    "name": "Vulnerability",
+    "schema": {
+      "cve_id": "string",
+      "severity": "string",
+      "asset_id": "string",
+      "status": "string",
+      "first_seen": "timestamp",
+      "resolved_at": "timestamp"
+    }
+  },
+  {
+    "id": "rt-training-record",
+    "name": "TrainingRecord",
+    "schema": {
+      "user_email": "string",
+      "course_name": "string",
+      "completed_at": "timestamp",
+      "score": "number",
+      "valid_until": "timestamp"
+    }
+  }
+]

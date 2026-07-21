@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ev-mfa-001",
+    "test_id": "test-mfa-001",
+    "resource_id": "res-user-001",
+    "status": "OK",
+    "reason": "MFA is enabled",
+    "evidence_type": "api_response",
+    "description": "Okta user report showing MFA enabled for alice@example.com",
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "ev-mfa-002",
+    "test_id": "test-mfa-001",
+    "resource_id": "res-user-002",
+    "status": "NEEDS_ATTENTION",
+    "reason": "MFA is not enabled",
+    "evidence_type": "api_response",
+    "description": "Okta user report showing MFA disabled for bob@example.com",
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "ev-encrypt-001",
+    "test_id": "test-encrypt-001",
+    "resource_id": "res-comp-001",
+    "status": "OK",
+    "reason": "Disk encryption is enabled",
+    "evidence_type": "snapshot",
+    "description": "Jamf device record shows FileVault enabled",
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "ev-vuln-001",
+    "test_id": "test-vuln-001",
+    "resource_id": "res-vuln-001",
+    "status": "NEEDS_ATTENTION",
+    "reason": "Critical vulnerability open beyond SLA",
+    "evidence_type": "api_response",
+    "description": "CrowdStrike vulnerability scan shows CVE-2024-1234 open 19 days",
+    "collected_at": "2024-06-20T12:00:00Z"
+  },
+  {
+    "id": "ev-train-001",
+    "test_id": "test-training-001",
+    "resource_id": "res-train-001",
+    "status": "OK",
+    "reason": "Training completed within validity window",
+    "evidence_type": "api_response",
+    "description": "KnowBe4 training record for alice@example.com",
+    "collected_at": "2024-06-20T12:00:00Z"
+  }
+]

@@ -1,0 +1,98 @@
+[
+  {
+    "id": "cc-mfa-001",
+    "code": "CC-MFA-001",
+    "domain": "Identity and Access Management",
+    "statement": "Enforce multi-factor authentication on all workforce accounts",
+    "expected_evidence": "Identity provider report showing MFA enabled per user",
+    "owner": "alice@example.com"
+  },
+  {
+    "id": "cc-encrypt-002",
+    "code": "CC-ENC-002",
+    "domain": "Data Protection",
+    "statement": "Encrypt data at rest and in transit",
+    "expected_evidence": "Cloud storage and volume encryption configuration screenshots",
+    "owner": "bob@example.com"
+  },
+  {
+    "id": "cc-offboard-003",
+    "code": "CC-OFFB-003",
+    "domain": "Identity and Access Management",
+    "statement": "Remove access for terminated employees within 24 hours",
+    "expected_evidence": "Access review and deprovisioning logs",
+    "owner": "carol@example.com"
+  },
+  {
+    "id": "cc-code-review-004",
+    "code": "CC-CR-004",
+    "domain": "Change Management",
+    "statement": "Require code review and approved pull requests before production changes",
+    "expected_evidence": "Repository branch protection and pull request screenshots",
+    "owner": "dave@example.com"
+  },
+  {
+    "id": "cc-training-005",
+    "code": "CC-TRAIN-005",
+    "domain": "Security Awareness",
+    "statement": "Deliver annual security awareness training and track completion",
+    "expected_evidence": "Training completion report",
+    "owner": "eve@example.com"
+  },
+  {
+    "id": "cc-logs-006",
+    "code": "CC-LOG-006",
+    "domain": "Monitoring",
+    "statement": "Collect and protect audit logs for critical systems",
+    "expected_evidence": "Logging configuration and retention policy",
+    "owner": "bob@example.com"
+  },
+  {
+    "id": "cc-vuln-007",
+    "code": "CC-VULN-007",
+    "domain": "Vulnerability Management",
+    "statement": "Patch critical vulnerabilities within 7 days",
+    "expected_evidence": "Vulnerability scan report and patch timeline",
+    "owner": "frank@example.com"
+  },
+  {
+    "id": "cc-vendor-008",
+    "code": "CC-VEND-008",
+    "domain": "Vendor Management",
+    "statement": "Assess and monitor security posture of third-party vendors",
+    "expected_evidence": "Vendor security questionnaire and review",
+    "owner": "grace@example.com"
+  },
+  {
+    "id": "cc-asset-009",
+    "code": "CC-ASSET-009",
+    "domain": "Asset Management",
+    "statement": "Maintain an inventory of endpoints and cloud assets",
+    "expected_evidence": "Asset inventory export",
+    "owner": "alice@example.com"
+  },
+  {
+    "id": "cc-incident-010",
+    "code": "CC-INC-010",
+    "domain": "Incident Response",
+    "statement": "Document and exercise an incident response plan annually",
+    "expected_evidence": "Incident response plan and tabletop exercise notes",
+    "owner": "heidi@example.com"
+  },
+  {
+    "id": "cc-access-review-011",
+    "code": "CC-AR-011",
+    "domain": "Identity and Access Management",
+    "statement": "Perform quarterly access reviews for all systems",
+    "expected_evidence": "Completed access review campaign records",
+    "owner": "carol@example.com"
+  },
+  {
+    "id": "cc-backup-012",
+    "code": "CC-BKP-012",
+    "domain": "Business Continuity",
+    "statement": "Back up critical data and test recovery procedures",
+    "expected_evidence": "Backup configuration and restore test logs",
+    "owner": "bob@example.com"
+  }
+]

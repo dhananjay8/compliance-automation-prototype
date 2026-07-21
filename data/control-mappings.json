@@ -1,0 +1,458 @@
+[
+  {
+    "common_control_id": "cc-mfa-001",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.1"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.2"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.9.4.2"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.312(d)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "8.3"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.AC-1"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "6.3"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-encrypt-002",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.1"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.7"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.10.1.1"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.312(a)(1)"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.312(e)(1)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "3.4"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "4.1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.DS-1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.DS-2"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "3.11"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-offboard-003",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.2"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.3"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.9.2.6"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(a)(3)(ii)(B)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.5"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "8.1.4"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.AC-4"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "6.4"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-code-review-004",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC8.1"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.12.1.2"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(a)(8)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "6.3.2"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "6.5.4"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.IP-3"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "7.3"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-training-005",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC2.3"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC7.1"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.7.2.2"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(a)(5)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "12.6.1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.AT-1"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "14.1"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-logs-006",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC7.2"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC7.3"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.12.4.1"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.312(b)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "10.2"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "DE.AE-3"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "8.2"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-vuln-007",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC7.1"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC8.1"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.12.6.1"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(a)(8)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "6.3.2"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "11.3.2"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "DE.CM-8"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "7.4"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-vendor-008",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC9.1"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC9.2"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.15.1.1"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(b)(1)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.28"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "12.8.1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "ID.SC-1"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "15.1"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-asset-009",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.1"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.8.1.1"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.310(d)(1)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.30"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "9.4.1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "ID.AM-1"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "1.1"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-incident-010",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC7.4"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC7.5"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.16.1.1"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(a)(6)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.33"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "12.10.1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "RS.RP-1"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "17.1"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-access-review-011",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.2"
+      },
+      {
+        "framework_code": "SOC2",
+        "section_code": "CC6.3"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.9.2.6"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.308(a)(3)(ii)(B)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "8.1.4"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.AC-4"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "6.4"
+      }
+    ]
+  },
+  {
+    "common_control_id": "cc-backup-012",
+    "mappings": [
+      {
+        "framework_code": "SOC2",
+        "section_code": "A1.2"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.8.2.3"
+      },
+      {
+        "framework_code": "ISO27001",
+        "section_code": "A.11.2.5"
+      },
+      {
+        "framework_code": "HIPAA",
+        "section_code": "164.310(d)(2)"
+      },
+      {
+        "framework_code": "GDPR",
+        "section_code": "Art.32"
+      },
+      {
+        "framework_code": "PCI DSS",
+        "section_code": "3.1"
+      },
+      {
+        "framework_code": "NIST CSF",
+        "section_code": "PR.DS-3"
+      },
+      {
+        "framework_code": "CIS",
+        "section_code": "3.12"
+      }
+    ]
+  }
+]

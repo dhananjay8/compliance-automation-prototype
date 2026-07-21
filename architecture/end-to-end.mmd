@@ -1,0 +1,29 @@
+graph LR
+    subgraph Sources
+        A[AWS GCP Azure]
+        B[GitHub GitLab]
+        C[Okta Google Workspace Azure AD]
+        D[Jira ServiceNow Slack]
+        E[HRIS MDM Vuln Scanners]
+        F[File Uploads Webhooks]
+    end
+    A --> IG[Integration Gateway]
+    B --> IG
+    C --> IG
+    D --> IG
+    E --> IG
+    F --> IG
+    IG --> CW[Connector Workers]
+    CW --> RN[Resource Normalizer]
+    RN --> TG[(Trust Graph DB)]
+    TG --> PE[Policy Rule Engine]
+    PE --> TE[Test Evaluation]
+    TE --> ES[(Evidence Store)]
+    TE --> WFE[Workflow Engine]
+    WFE --> NS[Notifications]
+    WFE --> TS[Ticketing]
+    ES --> DP[Dashboards and Portal]
+    ES --> AP[Auditor Portal]
+    DP --> API[Public API]
+    AP --> API
+    API --> UI[Web UI React]

@@ -1,0 +1,22 @@
+erDiagram
+    TENANT ||--o{ ORGANIZATION : has
+    ORGANIZATION ||--o{ USER : contains
+    ORGANIZATION ||--o{ FRAMEWORK : subscribes
+    FRAMEWORK ||--|{ SECTION : contains
+    SECTION ||--o{ FRAMEWORK_CONTROL : defines
+    COMMON_CONTROL ||--o{ FRAMEWORK_CONTROL : maps_to
+    COMMON_CONTROL ||--o{ CONTROL_TEST : validated_by
+    TEST ||--o{ CONTROL_TEST : assigned
+    TEST ||--o{ TEST_RUN : produces
+    TEST_RUN ||--|{ TEST_RESULT : has
+    TEST_RESULT ||--o{ EVIDENCE : supports
+    INTEGRATION ||--o{ CONNECTOR : uses
+    CONNECTOR ||--o{ SYNC_JOB : runs
+    SYNC_JOB ||--o{ RESOURCE : ingests
+    RESOURCE }o--|| RESOURCE_TYPE : typed
+    RESOURCE ||--o{ TEST_RESULT : evaluated
+    POLICY ||--o{ POLICY_ACK : acknowledged
+    ACCESS_REVIEW ||--o{ ACCESS_REVIEW_ITEM : includes
+    VENDOR ||--o{ VENDOR_ASSESSMENT : has
+    AUDIT ||--o{ AUDIT_REQUEST : contains
+    AUDIT_REQUEST ||--o{ AUDIT_EVIDENCE : references

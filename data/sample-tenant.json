@@ -1,0 +1,41 @@
+{
+  "id": "00000000-0000-0000-0000-000000000001",
+  "name": "Acme Demo Tenant",
+  "region": "us",
+  "organization": {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "name": "Acme Corporation"
+  },
+  "users": [
+    {
+      "id": "usr-001",
+      "email": "alice@example.com",
+      "full_name": "Alice Admin",
+      "role": "admin"
+    },
+    {
+      "id": "usr-002",
+      "email": "bob@example.com",
+      "full_name": "Bob Builder",
+      "role": "compliance_manager"
+    },
+    {
+      "id": "usr-003",
+      "email": "carol@example.com",
+      "full_name": "Carol Compliance",
+      "role": "control_owner"
+    },
+    {
+      "id": "usr-004",
+      "email": "dave@example.com",
+      "full_name": "Dave Dev",
+      "role": "control_owner"
+    },
+    {
+      "id": "usr-005",
+      "email": "eve@example.com",
+      "full_name": "Eve Engineer",
+      "role": "read_only"
+    }
+  ]
+}

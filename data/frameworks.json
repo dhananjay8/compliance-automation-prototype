@@ -1,0 +1,242 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000011",
+    "code": "SOC2",
+    "name": "SOC 2 Trust Services Criteria",
+    "version": "2022",
+    "sections": [
+      {
+        "code": "CC1.0",
+        "title": "Control Environment"
+      },
+      {
+        "code": "CC2.0",
+        "title": "Communication and Information"
+      },
+      {
+        "code": "CC3.0",
+        "title": "Risk Assessment"
+      },
+      {
+        "code": "CC4.0",
+        "title": "Monitoring Activities"
+      },
+      {
+        "code": "CC5.0",
+        "title": "Control Activities"
+      },
+      {
+        "code": "CC6.1",
+        "title": "Logical Access Security"
+      },
+      {
+        "code": "CC6.2",
+        "title": "Access Removal"
+      },
+      {
+        "code": "CC6.7",
+        "title": "Data Encryption"
+      },
+      {
+        "code": "CC7.1",
+        "title": "Detection of Security Events"
+      },
+      {
+        "code": "CC7.2",
+        "title": "Incident Detection"
+      },
+      {
+        "code": "CC8.1",
+        "title": "Change Management"
+      },
+      {
+        "code": "CC9.1",
+        "title": "Vendor Risk Management"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000012",
+    "code": "ISO27001",
+    "name": "ISO 27001",
+    "version": "2022",
+    "sections": [
+      {
+        "code": "A.5.1",
+        "title": "Policies for information security"
+      },
+      {
+        "code": "A.7.2.2",
+        "title": "Information security awareness"
+      },
+      {
+        "code": "A.8.1.1",
+        "title": "Inventory of assets"
+      },
+      {
+        "code": "A.9.2.6",
+        "title": "Removal or adjustment of access rights"
+      },
+      {
+        "code": "A.9.4.2",
+        "title": "Secure log-on procedures"
+      },
+      {
+        "code": "A.10.1.1",
+        "title": "Policy for use of cryptographic controls"
+      },
+      {
+        "code": "A.12.1.2",
+        "title": "Change management"
+      },
+      {
+        "code": "A.12.4.1",
+        "title": "Event logging"
+      },
+      {
+        "code": "A.15.1.1",
+        "title": "Information security policy for supplier relationships"
+      },
+      {
+        "code": "A.16.1.1",
+        "title": "Responsibilities and procedures"
+      },
+      {
+        "code": "A.12.6.1",
+        "title": "Management of technical vulnerabilities"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000013",
+    "code": "HIPAA",
+    "name": "HIPAA Security Rule",
+    "version": "2013",
+    "sections": [
+      {
+        "code": "164.308(a)(1)",
+        "title": "Security Management Process"
+      },
+      {
+        "code": "164.308(a)(3)(ii)(B)",
+        "title": "Workforce clearance procedures"
+      },
+      {
+        "code": "164.308(a)(5)",
+        "title": "Security awareness and training"
+      },
+      {
+        "code": "164.308(a)(6)",
+        "title": "Security incident procedures"
+      },
+      {
+        "code": "164.308(a)(8)",
+        "title": "Evaluation"
+      },
+      {
+        "code": "164.310(d)(1)",
+        "title": "Device and media controls"
+      },
+      {
+        "code": "164.312(a)(1)",
+        "title": "Access control"
+      },
+      {
+        "code": "164.312(b)",
+        "title": "Audit controls"
+      },
+      {
+        "code": "164.312(d)",
+        "title": "Person or entity authentication"
+      },
+      {
+        "code": "164.312(e)(1)",
+        "title": "Transmission security"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000014",
+    "code": "GDPR",
+    "name": "General Data Protection Regulation",
+    "version": "2016",
+    "sections": [
+      {
+        "code": "Art.5",
+        "title": "Principles relating to processing"
+      },
+      {
+        "code": "Art.25",
+        "title": "Data protection by design and by default"
+      },
+      {
+        "code": "Art.30",
+        "title": "Records of processing activities"
+      },
+      {
+        "code": "Art.32",
+        "title": "Security of processing"
+      },
+      {
+        "code": "Art.33",
+        "title": "Notification of personal data breach"
+      },
+      {
+        "code": "Art.28",
+        "title": "Processor"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000015",
+    "code": "PCI DSS",
+    "name": "Payment Card Industry Data Security Standard",
+    "version": "4.0",
+    "sections": [
+      {
+        "code": "3.4",
+        "title": "PAN storage protection"
+      },
+      {
+        "code": "4.1",
+        "title": "Strong cryptography for transmission"
+      },
+      {
+        "code": "6.3.2",
+        "title": "Software security patches"
+      },
+      {
+        "code": "6.5.4",
+        "title": "Insecure direct object references"
+      },
+      {
+        "code": "8.1.4",
+        "title": "Remove inactive accounts"
+      },
+      {
+        "code": "8.3",
+        "title": "Multi-factor authentication"
+      },
+      {
+        "code": "10.2",
+        "title": "Audit trail entries"
+      },
+      {
+        "code": "11.3.2",
+        "title": "Vulnerability scanning"
+      },
+      {
+        "code": "12.6.1",
+        "title": "Security awareness education"
+      },
+      {
+        "code": "12.8.1",
+        "title": "Maintain inventory of service providers"
+      },
+      {
+        "code": "12.10.1",
+        "title": "Incident response plan"
+      }
+    ]
+  }
+]
