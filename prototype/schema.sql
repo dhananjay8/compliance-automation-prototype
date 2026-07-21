@@ -1,6 +1,7 @@
 -- Prototype DDL for a Vanta-like compliance automation platform
 -- Target: PostgreSQL 15+
--- Assumptions: pgcrypto extension is available for gen_random_uuid()
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Tenants and organizations
 CREATE TABLE tenant (

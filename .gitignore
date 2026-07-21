@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.local
 *.log
 .DS_Store
 data/secrets/
@@ -8,4 +9,7 @@ __pycache__/
 *.pyc
 .vscode/
 .idea/
+prompts/
+internal-docs/
+podman/volumes/
 
