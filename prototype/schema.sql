@@ -30,7 +30,8 @@ CREATE TABLE "user" (
     role text NOT NULL CHECK (role IN ('admin', 'compliance_manager', 'control_owner', 'auditor', 'read_only', 'external_auditor')),
     active boolean NOT NULL DEFAULT true,
     sso_id text,
-    created_at timestamp with time zone NOT NULL DEFAULT now()
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    deleted_at timestamp with time zone
 );
 
 CREATE UNIQUE INDEX idx_user_tenant_email ON "user"(tenant_id, email) WHERE deleted_at IS NULL;

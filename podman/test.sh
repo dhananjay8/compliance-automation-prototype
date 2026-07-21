@@ -33,7 +33,7 @@ start() {
   podman build -f podman/Containerfile.test -t $RUNNER_IMAGE .
 
   echo Waiting for postgres
-  until podman exec $PG_CONTAINER pg_isready -U $PG_USER -d $PG_DB; do
+  until podman exec $PG_CONTAINER psql -U $PG_USER -d $PG_DB -c 'SELECT 1' > /dev/null 2>&1; do
     sleep 1
   done
 }

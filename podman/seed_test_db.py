@@ -49,9 +49,10 @@ cur.execute('INSERT INTO organization (id, tenant_id, name) VALUES (%s, %s, %s)'
 
 user_map = {}
 for u in tenant['users']:
+    user_id = uid(u['id'])
     cur.execute('INSERT INTO "user" (id, tenant_id, organization_id, email, full_name, role) VALUES (%s, %s, %s, %s, %s, %s)',
-                (u['id'], tenant_id, org_id, u['email'], u['full_name'], u['role']))
-    user_map[u['email']] = u['id']
+                (user_id, tenant_id, org_id, u['email'], u['full_name'], u['role']))
+    user_map[u['email']] = user_id
 
 frameworks = load_json(repo / 'data/frameworks.json')
 section_map = {}
@@ -69,16 +70,22 @@ for fw in frameworks:
 
 common_controls = load_json(repo / 'data/common-controls.json')
 control_map = {}
+control_id_map = {}
 for cc in common_controls:
+    cc_id = uid(cc['id'])
     owner_id = user_map.get(cc.get('owner')) if cc.get('owner') else None
     cur.execute('INSERT INTO common_control (id, tenant_id, code, domain, statement, owner_id, expected_evidence) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                (cc['id'], tenant_id, cc['code'], cc['domain'], cc['statement'], owner_id, cc.get('expected_evidence')))
+                (cc_id, tenant_id, cc['code'], cc['domain'], cc['statement'], owner_id, cc.get('expected_evidence')))
     control_map[cc['id']] = cc
+    control_id_map[cc['id']] = cc_id
 
 mappings = load_json(repo / 'data/control-mappings.json')
 for item in mappings:
-    cc_id = item['common_control_id']
-    cc = control_map.get(cc_id, {})
+    cc_ref = item['common_control_id']
+    cc_id = control_id_map.get(cc_ref)
+    if not cc_id:
+        continue
+    cc = control_map.get(cc_ref, {})
     for m in item['mappings']:
         fw_id = framework_map.get(m['framework_code'])
         if not fw_id:
@@ -90,7 +97,7 @@ for item in mappings:
 resource_types = load_json(repo / 'data/resource-types.json')
 rt_map = {}
 for rt in resource_types:
-    rt_id = rt['id']
+    rt_id = uid(f"rt:{rt['name']}")
     rt_map[rt['name']] = rt_id
     cur.execute('INSERT INTO resource_type (id, tenant_id, name, schema) VALUES (%s, %s, %s, %s)',
                 (rt_id, tenant_id, rt['name'], json.dumps(rt['schema'])))
