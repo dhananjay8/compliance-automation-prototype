@@ -14,6 +14,10 @@
         "title": "Communication and Information"
       },
       {
+        "code": "CC2.3",
+        "title": "Internal Security Communication"
+      },
+      {
         "code": "CC3.0",
         "title": "Risk Assessment"
       },
@@ -34,6 +38,10 @@
         "title": "Access Removal"
       },
       {
+        "code": "CC6.3",
+        "title": "Access Review and Recertification"
+      },
+      {
         "code": "CC6.7",
         "title": "Data Encryption"
       },
@@ -46,12 +54,32 @@
         "title": "Incident Detection"
       },
       {
+        "code": "CC7.3",
+        "title": "Security Event Logging and Monitoring"
+      },
+      {
+        "code": "CC7.4",
+        "title": "Incident Response Procedures"
+      },
+      {
+        "code": "CC7.5",
+        "title": "Incident Response Testing and Improvement"
+      },
+      {
         "code": "CC8.1",
         "title": "Change Management"
       },
       {
         "code": "CC9.1",
         "title": "Vendor Risk Management"
+      },
+      {
+        "code": "CC9.2",
+        "title": "Vendor Monitoring and Review"
+      },
+      {
+        "code": "A1.2",
+        "title": "Availability and Backup Safeguards"
       }
     ]
   },
@@ -74,6 +102,10 @@
         "title": "Inventory of assets"
       },
       {
+        "code": "A.8.2.3",
+        "title": "Handling of assets"
+      },
+      {
         "code": "A.9.2.6",
         "title": "Removal or adjustment of access rights"
       },
@@ -84,6 +116,10 @@
       {
         "code": "A.10.1.1",
         "title": "Policy for use of cryptographic controls"
+      },
+      {
+        "code": "A.11.2.5",
+        "title": "Removal of assets"
       },
       {
         "code": "A.12.1.2",
@@ -134,8 +170,16 @@
         "title": "Evaluation"
       },
       {
+        "code": "164.308(b)(1)",
+        "title": "Business associate contracts and other arrangements"
+      },
+      {
         "code": "164.310(d)(1)",
         "title": "Device and media controls"
+      },
+      {
+        "code": "164.310(d)(2)",
+        "title": "Disposal and media reuse procedures"
       },
       {
         "code": "164.312(a)(1)",
@@ -194,6 +238,10 @@
     "version": "4.0",
     "sections": [
       {
+        "code": "3.1",
+        "title": "Data retention and disposal"
+      },
+      {
         "code": "3.4",
         "title": "PAN storage protection"
       },
@@ -218,6 +266,10 @@
         "title": "Multi-factor authentication"
       },
       {
+        "code": "9.4.1",
+        "title": "Physical access controls for devices"
+      },
+      {
         "code": "10.2",
         "title": "Audit trail entries"
       },
@@ -236,6 +288,114 @@
       {
         "code": "12.10.1",
         "title": "Incident response plan"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000016",
+    "code": "NIST CSF",
+    "name": "NIST Cybersecurity Framework",
+    "version": "1.1",
+    "sections": [
+      {
+        "code": "PR.AC-1",
+        "title": "Identities and credentials are managed for authorized devices and users"
+      },
+      {
+        "code": "PR.DS-1",
+        "title": "Data-at-rest is protected"
+      },
+      {
+        "code": "PR.DS-2",
+        "title": "Data-in-transit is protected"
+      },
+      {
+        "code": "PR.AC-4",
+        "title": "Access permissions and authorizations are managed"
+      },
+      {
+        "code": "PR.IP-3",
+        "title": "Configuration change control processes are in place"
+      },
+      {
+        "code": "PR.AT-1",
+        "title": "All users are informed and trained"
+      },
+      {
+        "code": "DE.AE-3",
+        "title": "Event data are collected and correlated from multiple sources"
+      },
+      {
+        "code": "DE.CM-8",
+        "title": "Vulnerability scans are performed"
+      },
+      {
+        "code": "ID.SC-1",
+        "title": "Supply chain risk management processes are identified"
+      },
+      {
+        "code": "ID.AM-1",
+        "title": "Physical devices and systems are inventoried"
+      },
+      {
+        "code": "RS.RP-1",
+        "title": "Response plan is executed during or after an incident"
+      },
+      {
+        "code": "PR.DS-3",
+        "title": "Assets are formally managed throughout removal and transfers"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000017",
+    "code": "CIS",
+    "name": "CIS Critical Security Controls",
+    "version": "8.0",
+    "sections": [
+      {
+        "code": "1.1",
+        "title": "Establish and maintain detailed enterprise asset inventory"
+      },
+      {
+        "code": "3.11",
+        "title": "Encrypt sensitive data at rest"
+      },
+      {
+        "code": "3.12",
+        "title": "Encrypt sensitive data in transit"
+      },
+      {
+        "code": "6.3",
+        "title": "Require multifactor authentication"
+      },
+      {
+        "code": "6.4",
+        "title": "Manage access control and deprovisioning"
+      },
+      {
+        "code": "7.3",
+        "title": "Perform and maintain secure configuration process"
+      },
+      {
+        "code": "7.4",
+        "title": "Perform automated vulnerability management"
+      },
+      {
+        "code": "8.2",
+        "title": "Collect audit logs"
+      },
+      {
+        "code": "14.1",
+        "title": "Establish and maintain a security awareness program"
+      },
+      {
+        "code": "15.1",
+        "title": "Establish and maintain an inventory of service providers"
+      },
+      {
+        "code": "17.1",
+        "title": "Design and maintain an incident response process"
       }
     ]
   }

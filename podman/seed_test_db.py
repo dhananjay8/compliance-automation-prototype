@@ -73,7 +73,10 @@ control_map = {}
 control_id_map = {}
 for cc in common_controls:
     cc_id = uid(cc['id'])
-    owner_id = user_map.get(cc.get('owner')) if cc.get('owner') else None
+    owner = cc.get('owner')
+    owner_id = user_map.get(owner) if owner else None
+    if owner and owner_id is None:
+        raise ValueError(f"Unknown control owner {owner} for common control {cc['id']}")
     cur.execute('INSERT INTO common_control (id, tenant_id, code, domain, statement, owner_id, expected_evidence) VALUES (%s, %s, %s, %s, %s, %s, %s)',
                 (cc_id, tenant_id, cc['code'], cc['domain'], cc['statement'], owner_id, cc.get('expected_evidence')))
     control_map[cc['id']] = cc
@@ -84,13 +87,17 @@ for item in mappings:
     cc_ref = item['common_control_id']
     cc_id = control_id_map.get(cc_ref)
     if not cc_id:
-        continue
+        raise ValueError(f"Unknown common control mapping reference {cc_ref}")
     cc = control_map.get(cc_ref, {})
     for m in item['mappings']:
         fw_id = framework_map.get(m['framework_code'])
         if not fw_id:
-            continue
+            raise ValueError(f"Unknown framework code {m['framework_code']} in control mapping for {cc_ref}")
         sec_id = section_map.get((fw_id, m['section_code']))
+        if not sec_id:
+            raise ValueError(
+                f"Unknown section code {m['section_code']} for framework {m['framework_code']} in control mapping for {cc_ref}"
+            )
         cur.execute('INSERT INTO framework_control (id, tenant_id, framework_id, section_id, common_control_id, requirement_text) VALUES (%s, %s, %s, %s, %s, %s)',
                     (uid(f"{fw_id}:{m['section_code']}:{cc_id}"), tenant_id, fw_id, sec_id, cc_id, cc.get('statement', '')))
 
@@ -117,6 +124,8 @@ for r in resources:
     res_id = uid(r['id'])
     resource_id_map[r['id']] = res_id
     rt_id = rt_map.get(r['resource_type'])
+    if not rt_id:
+        raise ValueError(f"Unknown resource type {r['resource_type']} for resource {r['id']}")
     external_id = r.get('external_id', r['id'])
     cur.execute('INSERT INTO resource (id, tenant_id, integration_id, resource_type_id, external_id, data, collected_at, hash) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
                 (res_id, tenant_id, integration_map[int_str], rt_id, external_id, json.dumps(r['data']), parse_time(r['collected_at']), ''))
@@ -130,13 +139,17 @@ test_rules = {
 
 evidence = load_json(repo / 'data/sample-evidence.json')
 test_run_map = {}
+test_id_map = {}
 for ev in evidence:
     t_str = ev['test_id']
     t_id = uid(t_str)
+    test_id_map[t_str] = t_id
     if t_id not in test_run_map:
         cfg = test_rules.get(t_str, {})
         rt_name = cfg.get('resource_type', 'UserAccount')
         rt_id = rt_map.get(rt_name)
+        if not rt_id:
+            raise ValueError(f"Unknown test resource type {rt_name} for test {t_str}")
         cur.execute('INSERT INTO test (id, tenant_id, name, resource_type, rule, schedule) VALUES (%s, %s, %s, %s, %s, %s)',
                     (t_id, tenant_id, t_str, rt_name, json.dumps(cfg.get('rule', {})), '0 * * * *'))
         run_id = uid(f"{t_str}:run1")
@@ -144,11 +157,22 @@ for ev in evidence:
         cur.execute('INSERT INTO test_run (id, tenant_id, test_id, status, started_at, completed_at) VALUES (%s, %s, %s, %s, %s, %s)',
                     (run_id, tenant_id, t_id, 'completed', parse_time(ev['collected_at']), parse_time(ev['collected_at'])))
     res_id = resource_id_map.get(ev['resource_id'])
+    if not res_id:
+        raise ValueError(f"Evidence {ev['id']} references unknown resource {ev['resource_id']}")
     tr_id = uid(f"{ev['id']}:result")
     cur.execute('INSERT INTO test_result (id, tenant_id, test_run_id, resource_id, status, reason, evaluated_at) VALUES (%s, %s, %s, %s, %s, %s, %s)',
                 (tr_id, tenant_id, test_run_map[t_id], res_id, ev['status'], ev['reason'], parse_time(ev['collected_at'])))
     cur.execute('INSERT INTO evidence (id, tenant_id, test_result_id, evidence_type, description, collected_at) VALUES (%s, %s, %s, %s, %s, %s)',
                 (uid(ev['id']), tenant_id, tr_id, ev['evidence_type'], ev['description'], parse_time(ev['collected_at'])))
+
+control_test_links = load_json(repo / 'data/control-test-links.json')
+for link in control_test_links:
+    cc_id = control_id_map.get(link['common_control_id'])
+    t_id = test_id_map.get(link['test_id'])
+    if not cc_id or not t_id:
+        raise ValueError(f"Invalid control-test link: {link}")
+    cur.execute('INSERT INTO control_test (id, tenant_id, common_control_id, test_id) VALUES (%s, %s, %s, %s)',
+                (uid(f"{cc_id}:{t_id}"), tenant_id, cc_id, t_id))
 
 conn.commit()
 cur.close()

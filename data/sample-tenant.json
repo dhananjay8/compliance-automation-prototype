@@ -36,6 +36,24 @@
       "email": "eve@example.com",
       "full_name": "Eve Engineer",
       "role": "read_only"
+    },
+    {
+      "id": "usr-006",
+      "email": "frank@example.com",
+      "full_name": "Frank Fixer",
+      "role": "control_owner"
+    },
+    {
+      "id": "usr-007",
+      "email": "grace@example.com",
+      "full_name": "Grace Governance",
+      "role": "control_owner"
+    },
+    {
+      "id": "usr-008",
+      "email": "heidi@example.com",
+      "full_name": "Heidi Incident",
+      "role": "auditor"
     }
   ]
 }

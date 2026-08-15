@@ -27,6 +27,26 @@ A Vanta-like continuous compliance automation prototype. This repository contain
 python3 scripts/generate_seed_data.py
 ```
 
+Optional root override (useful in CI or non-standard checkouts):
+
+```bash
+COMPLIANCE_PROTOTYPE_ROOT=$(pwd) python3 scripts/generate_seed_data.py
+```
+
+## Dry-run validation
+
+Run a logical validation pass across all seed JSON files without starting services:
+
+```bash
+python3 scripts/validate_seed_data.py
+```
+
+Fail on warnings as well:
+
+```bash
+python3 scripts/validate_seed_data.py --strict-warnings
+```
+
 ## Tech stack recommendation
 
 - Backend: Node.js 20 + Express + TypeScript + Prisma

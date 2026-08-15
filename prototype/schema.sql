@@ -4,7 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Tenants and organizations
-CREATE TABLE tenant (
+CREATE TABLE IF NOT EXISTS tenant (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
     region text NOT NULL DEFAULT 'us',
@@ -13,7 +13,7 @@ CREATE TABLE tenant (
     deleted_at timestamp with time zone
 );
 
-CREATE TABLE organization (
+CREATE TABLE IF NOT EXISTS organization (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     name text NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE organization (
 );
 
 -- Users and RBAC
-CREATE TABLE "user" (
+CREATE TABLE IF NOT EXISTS "user" (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     organization_id uuid REFERENCES organization(id) ON DELETE SET NULL,
@@ -34,10 +34,10 @@ CREATE TABLE "user" (
     deleted_at timestamp with time zone
 );
 
-CREATE UNIQUE INDEX idx_user_tenant_email ON "user"(tenant_id, email) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_email ON "user"(tenant_id, email) WHERE deleted_at IS NULL;
 
 -- Frameworks, sections, and controls
-CREATE TABLE framework (
+CREATE TABLE IF NOT EXISTS framework (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     code text NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE framework (
     active boolean NOT NULL DEFAULT true
 );
 
-CREATE TABLE section (
+CREATE TABLE IF NOT EXISTS section (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     framework_id uuid NOT NULL REFERENCES framework(id) ON DELETE CASCADE,
     code text NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE section (
     description text
 );
 
-CREATE TABLE common_control (
+CREATE TABLE IF NOT EXISTS common_control (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     code text NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE common_control (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE TABLE framework_control (
+CREATE TABLE IF NOT EXISTS framework_control (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     framework_id uuid NOT NULL REFERENCES framework(id) ON DELETE CASCADE,
@@ -76,7 +76,7 @@ CREATE TABLE framework_control (
 );
 
 -- Tests and evidence
-CREATE TABLE test (
+CREATE TABLE IF NOT EXISTS test (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     name text NOT NULL,
@@ -87,14 +87,14 @@ CREATE TABLE test (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE TABLE control_test (
+CREATE TABLE IF NOT EXISTS control_test (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     common_control_id uuid NOT NULL REFERENCES common_control(id) ON DELETE CASCADE,
     test_id uuid NOT NULL REFERENCES test(id) ON DELETE CASCADE
 );
 
-CREATE TABLE test_run (
+CREATE TABLE IF NOT EXISTS test_run (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     test_id uuid NOT NULL REFERENCES test(id) ON DELETE CASCADE,
@@ -103,14 +103,14 @@ CREATE TABLE test_run (
     completed_at timestamp with time zone
 );
 
-CREATE TABLE resource_type (
+CREATE TABLE IF NOT EXISTS resource_type (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     name text NOT NULL,
     schema jsonb NOT NULL
 );
 
-CREATE TABLE integration (
+CREATE TABLE IF NOT EXISTS integration (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     connector text NOT NULL,
@@ -122,7 +122,21 @@ CREATE TABLE integration (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE TABLE resource (
+CREATE TABLE IF NOT EXISTS sync_job (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    integration_id uuid NOT NULL REFERENCES integration(id) ON DELETE CASCADE,
+    triggered_by uuid REFERENCES "user"(id) ON DELETE SET NULL,
+    mode text NOT NULL DEFAULT 'manual' CHECK (mode IN ('manual', 'scheduled', 'webhook')),
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    watermark text,
+    error text,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS resource (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     integration_id uuid NOT NULL REFERENCES integration(id) ON DELETE CASCADE,
@@ -133,9 +147,9 @@ CREATE TABLE resource (
     hash text
 );
 
-CREATE UNIQUE INDEX idx_resource_external ON resource(tenant_id, integration_id, external_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_external ON resource(tenant_id, integration_id, external_id);
 
-CREATE TABLE test_result (
+CREATE TABLE IF NOT EXISTS test_result (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     test_run_id uuid NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
@@ -145,18 +159,19 @@ CREATE TABLE test_result (
     evaluated_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE TABLE evidence (
+CREATE TABLE IF NOT EXISTS evidence (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     test_result_id uuid NOT NULL REFERENCES test_result(id) ON DELETE CASCADE,
     evidence_type text NOT NULL CHECK (evidence_type IN ('snapshot', 'document', 'screenshot', 'api_response')),
     storage_path text,
     description text,
-    collected_at timestamp with time zone NOT NULL DEFAULT now()
+    collected_at timestamp with time zone NOT NULL DEFAULT now(),
+    expires_at timestamp with time zone
 );
 
 -- Policies, access reviews, vendors, audits
-CREATE TABLE policy (
+CREATE TABLE IF NOT EXISTS policy (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     title text NOT NULL,
@@ -166,7 +181,7 @@ CREATE TABLE policy (
     active boolean NOT NULL DEFAULT true
 );
 
-CREATE TABLE policy_ack (
+CREATE TABLE IF NOT EXISTS policy_ack (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     policy_id uuid NOT NULL REFERENCES policy(id) ON DELETE CASCADE,
@@ -174,7 +189,7 @@ CREATE TABLE policy_ack (
     acknowledged_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE TABLE access_review (
+CREATE TABLE IF NOT EXISTS access_review (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     name text NOT NULL,
@@ -182,7 +197,7 @@ CREATE TABLE access_review (
     status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'completed', 'overdue'))
 );
 
-CREATE TABLE access_review_item (
+CREATE TABLE IF NOT EXISTS access_review_item (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     access_review_id uuid NOT NULL REFERENCES access_review(id) ON DELETE CASCADE,
@@ -192,7 +207,7 @@ CREATE TABLE access_review_item (
     notes text
 );
 
-CREATE TABLE vendor (
+CREATE TABLE IF NOT EXISTS vendor (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     name text NOT NULL,
@@ -200,7 +215,7 @@ CREATE TABLE vendor (
     risk_level text CHECK (risk_level IN ('low', 'medium', 'high', 'critical'))
 );
 
-CREATE TABLE vendor_assessment (
+CREATE TABLE IF NOT EXISTS vendor_assessment (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     vendor_id uuid NOT NULL REFERENCES vendor(id) ON DELETE CASCADE,
@@ -208,7 +223,7 @@ CREATE TABLE vendor_assessment (
     completed_at timestamp with time zone
 );
 
-CREATE TABLE audit (
+CREATE TABLE IF NOT EXISTS audit (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     framework_id uuid NOT NULL REFERENCES framework(id) ON DELETE CASCADE,
@@ -218,7 +233,7 @@ CREATE TABLE audit (
     end_date timestamp with time zone
 );
 
-CREATE TABLE audit_request (
+CREATE TABLE IF NOT EXISTS audit_request (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     audit_id uuid NOT NULL REFERENCES audit(id) ON DELETE CASCADE,
@@ -228,7 +243,7 @@ CREATE TABLE audit_request (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     actor_id uuid REFERENCES "user"(id) ON DELETE SET NULL,
@@ -240,7 +255,8 @@ CREATE TABLE audit_log (
 );
 
 -- Indexes for common access patterns
-CREATE INDEX idx_resource_tenant_type ON resource(tenant_id, resource_type_id);
-CREATE INDEX idx_test_result_run ON test_result(test_run_id);
-CREATE INDEX idx_framework_control_common ON framework_control(common_control_id);
-CREATE INDEX idx_control_test_test ON control_test(test_id);
+CREATE INDEX IF NOT EXISTS idx_resource_tenant_type ON resource(tenant_id, resource_type_id);
+CREATE INDEX IF NOT EXISTS idx_test_result_run ON test_result(test_run_id);
+CREATE INDEX IF NOT EXISTS idx_framework_control_common ON framework_control(common_control_id);
+CREATE INDEX IF NOT EXISTS idx_control_test_test ON control_test(test_id);
+CREATE INDEX IF NOT EXISTS idx_sync_job_status_created ON sync_job(status, created_at);

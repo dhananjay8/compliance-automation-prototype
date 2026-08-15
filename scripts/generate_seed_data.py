@@ -1,7 +1,8 @@
 import json
+import os
 from pathlib import Path
 
-root = Path('/Users/dhapatil/workspace/projects/compliance-automation-prototype')
+root = Path(os.getenv('COMPLIANCE_PROTOTYPE_ROOT', str(Path(__file__).resolve().parent.parent)))
 
 tenant_id = '00000000-0000-0000-0000-000000000001'
 org_id = '00000000-0000-0000-0000-000000000002'
@@ -15,16 +16,23 @@ frameworks = [
         'sections': [
             {'code': 'CC1.0', 'title': 'Control Environment'},
             {'code': 'CC2.0', 'title': 'Communication and Information'},
+            {'code': 'CC2.3', 'title': 'Internal Security Communication'},
             {'code': 'CC3.0', 'title': 'Risk Assessment'},
             {'code': 'CC4.0', 'title': 'Monitoring Activities'},
             {'code': 'CC5.0', 'title': 'Control Activities'},
             {'code': 'CC6.1', 'title': 'Logical Access Security'},
             {'code': 'CC6.2', 'title': 'Access Removal'},
+            {'code': 'CC6.3', 'title': 'Access Review and Recertification'},
             {'code': 'CC6.7', 'title': 'Data Encryption'},
             {'code': 'CC7.1', 'title': 'Detection of Security Events'},
             {'code': 'CC7.2', 'title': 'Incident Detection'},
+            {'code': 'CC7.3', 'title': 'Security Event Logging and Monitoring'},
+            {'code': 'CC7.4', 'title': 'Incident Response Procedures'},
+            {'code': 'CC7.5', 'title': 'Incident Response Testing and Improvement'},
             {'code': 'CC8.1', 'title': 'Change Management'},
-            {'code': 'CC9.1', 'title': 'Vendor Risk Management'}
+            {'code': 'CC9.1', 'title': 'Vendor Risk Management'},
+            {'code': 'CC9.2', 'title': 'Vendor Monitoring and Review'},
+            {'code': 'A1.2', 'title': 'Availability and Backup Safeguards'}
         ]
     },
     {
@@ -36,9 +44,11 @@ frameworks = [
             {'code': 'A.5.1', 'title': 'Policies for information security'},
             {'code': 'A.7.2.2', 'title': 'Information security awareness'},
             {'code': 'A.8.1.1', 'title': 'Inventory of assets'},
+            {'code': 'A.8.2.3', 'title': 'Handling of assets'},
             {'code': 'A.9.2.6', 'title': 'Removal or adjustment of access rights'},
             {'code': 'A.9.4.2', 'title': 'Secure log-on procedures'},
             {'code': 'A.10.1.1', 'title': 'Policy for use of cryptographic controls'},
+            {'code': 'A.11.2.5', 'title': 'Removal of assets'},
             {'code': 'A.12.1.2', 'title': 'Change management'},
             {'code': 'A.12.4.1', 'title': 'Event logging'},
             {'code': 'A.15.1.1', 'title': 'Information security policy for supplier relationships'},
@@ -57,7 +67,9 @@ frameworks = [
             {'code': '164.308(a)(5)', 'title': 'Security awareness and training'},
             {'code': '164.308(a)(6)', 'title': 'Security incident procedures'},
             {'code': '164.308(a)(8)', 'title': 'Evaluation'},
+            {'code': '164.308(b)(1)', 'title': 'Business associate contracts and other arrangements'},
             {'code': '164.310(d)(1)', 'title': 'Device and media controls'},
+            {'code': '164.310(d)(2)', 'title': 'Disposal and media reuse procedures'},
             {'code': '164.312(a)(1)', 'title': 'Access control'},
             {'code': '164.312(b)', 'title': 'Audit controls'},
             {'code': '164.312(d)', 'title': 'Person or entity authentication'},
@@ -84,17 +96,58 @@ frameworks = [
         'name': 'Payment Card Industry Data Security Standard',
         'version': '4.0',
         'sections': [
+            {'code': '3.1', 'title': 'Data retention and disposal'},
             {'code': '3.4', 'title': 'PAN storage protection'},
             {'code': '4.1', 'title': 'Strong cryptography for transmission'},
             {'code': '6.3.2', 'title': 'Software security patches'},
             {'code': '6.5.4', 'title': 'Insecure direct object references'},
             {'code': '8.1.4', 'title': 'Remove inactive accounts'},
             {'code': '8.3', 'title': 'Multi-factor authentication'},
+            {'code': '9.4.1', 'title': 'Physical access controls for devices'},
             {'code': '10.2', 'title': 'Audit trail entries'},
             {'code': '11.3.2', 'title': 'Vulnerability scanning'},
             {'code': '12.6.1', 'title': 'Security awareness education'},
             {'code': '12.8.1', 'title': 'Maintain inventory of service providers'},
             {'code': '12.10.1', 'title': 'Incident response plan'}
+        ]
+    },
+    {
+        'id': '00000000-0000-0000-0000-000000000016',
+        'code': 'NIST CSF',
+        'name': 'NIST Cybersecurity Framework',
+        'version': '1.1',
+        'sections': [
+            {'code': 'PR.AC-1', 'title': 'Identities and credentials are managed for authorized devices and users'},
+            {'code': 'PR.DS-1', 'title': 'Data-at-rest is protected'},
+            {'code': 'PR.DS-2', 'title': 'Data-in-transit is protected'},
+            {'code': 'PR.AC-4', 'title': 'Access permissions and authorizations are managed'},
+            {'code': 'PR.IP-3', 'title': 'Configuration change control processes are in place'},
+            {'code': 'PR.AT-1', 'title': 'All users are informed and trained'},
+            {'code': 'DE.AE-3', 'title': 'Event data are collected and correlated from multiple sources'},
+            {'code': 'DE.CM-8', 'title': 'Vulnerability scans are performed'},
+            {'code': 'ID.SC-1', 'title': 'Supply chain risk management processes are identified'},
+            {'code': 'ID.AM-1', 'title': 'Physical devices and systems are inventoried'},
+            {'code': 'RS.RP-1', 'title': 'Response plan is executed during or after an incident'},
+            {'code': 'PR.DS-3', 'title': 'Assets are formally managed throughout removal and transfers'}
+        ]
+    },
+    {
+        'id': '00000000-0000-0000-0000-000000000017',
+        'code': 'CIS',
+        'name': 'CIS Critical Security Controls',
+        'version': '8.0',
+        'sections': [
+            {'code': '1.1', 'title': 'Establish and maintain detailed enterprise asset inventory'},
+            {'code': '3.11', 'title': 'Encrypt sensitive data at rest'},
+            {'code': '3.12', 'title': 'Encrypt sensitive data in transit'},
+            {'code': '6.3', 'title': 'Require multifactor authentication'},
+            {'code': '6.4', 'title': 'Manage access control and deprovisioning'},
+            {'code': '7.3', 'title': 'Perform and maintain secure configuration process'},
+            {'code': '7.4', 'title': 'Perform automated vulnerability management'},
+            {'code': '8.2', 'title': 'Collect audit logs'},
+            {'code': '14.1', 'title': 'Establish and maintain a security awareness program'},
+            {'code': '15.1', 'title': 'Establish and maintain an inventory of service providers'},
+            {'code': '17.1', 'title': 'Design and maintain an incident response process'}
         ]
     }
 ]
@@ -509,6 +562,13 @@ evidence = [
     }
 ]
 
+control_test_links = [
+    {'common_control_id': 'cc-mfa-001', 'test_id': 'test-mfa-001'},
+    {'common_control_id': 'cc-encrypt-002', 'test_id': 'test-encrypt-001'},
+    {'common_control_id': 'cc-vuln-007', 'test_id': 'test-vuln-001'},
+    {'common_control_id': 'cc-training-005', 'test_id': 'test-training-001'},
+]
+
 tenant = {
     'id': tenant_id,
     'name': 'Acme Demo Tenant',
@@ -522,7 +582,10 @@ tenant = {
         {'id': 'usr-002', 'email': 'bob@example.com', 'full_name': 'Bob Builder', 'role': 'compliance_manager'},
         {'id': 'usr-003', 'email': 'carol@example.com', 'full_name': 'Carol Compliance', 'role': 'control_owner'},
         {'id': 'usr-004', 'email': 'dave@example.com', 'full_name': 'Dave Dev', 'role': 'control_owner'},
-        {'id': 'usr-005', 'email': 'eve@example.com', 'full_name': 'Eve Engineer', 'role': 'read_only'}
+        {'id': 'usr-005', 'email': 'eve@example.com', 'full_name': 'Eve Engineer', 'role': 'read_only'},
+        {'id': 'usr-006', 'email': 'frank@example.com', 'full_name': 'Frank Fixer', 'role': 'control_owner'},
+        {'id': 'usr-007', 'email': 'grace@example.com', 'full_name': 'Grace Governance', 'role': 'control_owner'},
+        {'id': 'usr-008', 'email': 'heidi@example.com', 'full_name': 'Heidi Incident', 'role': 'auditor'}
     ]
 }
 
@@ -553,6 +616,7 @@ for name, data in [
     ('data/frameworks.json', frameworks),
     ('data/common-controls.json', common_controls),
     ('data/control-mappings.json', mappings),
+    ('data/control-test-links.json', control_test_links),
     ('data/resource-types.json', resource_types),
     ('data/sample-resources.json', resources),
     ('data/sample-evidence.json', evidence),

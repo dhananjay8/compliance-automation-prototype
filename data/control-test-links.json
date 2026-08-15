@@ -1,0 +1,18 @@
+[
+  {
+    "common_control_id": "cc-mfa-001",
+    "test_id": "test-mfa-001"
+  },
+  {
+    "common_control_id": "cc-encrypt-002",
+    "test_id": "test-encrypt-001"
+  },
+  {
+    "common_control_id": "cc-vuln-007",
+    "test_id": "test-vuln-001"
+  },
+  {
+    "common_control_id": "cc-training-005",
+    "test_id": "test-training-001"
+  }
+]

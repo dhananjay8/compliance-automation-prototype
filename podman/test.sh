@@ -13,6 +13,11 @@ PG_DB=compliance_test
 
 cmd=${1:-test}
 
+validate() {
+  echo "Validating seed data (dry run)"
+  python3 scripts/validate_seed_data.py
+}
+
 start() {
   echo Creating pod $POD_NAME with ports $PG_PORT and $REDIS_PORT
   podman pod rm -f $POD_NAME 2>/dev/null || true
@@ -54,6 +59,7 @@ seed() {
 }
 
 test() {
+  validate
   start
   seed
   echo Running assertions
@@ -72,10 +78,11 @@ stop() {
 }
 
 case $cmd in
+  validate) validate ;;
   start) start ;;
   seed) seed ;;
   test) test ;;
   stop) stop ;;
   restart) stop; test ;;
-  *) echo Usage: $0 {start|seed|test|stop|restart}; exit 1 ;;
+  *) echo Usage: $0 {validate|start|seed|test|stop|restart}; exit 1 ;;
 esac
