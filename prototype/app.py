@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import uuid
@@ -28,6 +29,90 @@ from rag import RAGQuery, RAGResponse, RAGIndexRequest, rag as rag_service
 
 app = FastAPI(title="Compliance Automation Prototype", version="0.1.0")
 worker = SyncWorker(db)
+
+AUDITABLE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _audit_resource_type(path: str) -> str:
+    parts = [p for p in path.split("/") if p and not p.startswith("api")]
+    for p in parts:
+        if p.startswith("v"):
+            continue
+        return p
+    return parts[-1] if parts else "unknown"
+
+
+def _audit_resource_id(request: Request) -> str | None:
+    for key in ("id", "integration_id", "test_id", "control_id", "audit_id", "tenant_id"):
+        value = request.path_params.get(key)
+        if value:
+            return value
+    return None
+
+
+def _log_audit(
+    tenant_id: str,
+    actor_id: str | None,
+    action: str,
+    resource_type: str,
+    resource_id: str | None,
+    details: str,
+) -> None:
+    try:
+        if db._pool is None:
+            return
+        if not tenant_id or not _is_uuid(tenant_id):
+            return
+        if not db.fetchone("SELECT id FROM tenant WHERE id = %s", (tenant_id,)):
+            return
+        if actor_id and _is_uuid(actor_id):
+            if not db.fetchone('SELECT id FROM "user" WHERE id = %s', (actor_id,)):
+                actor_id = None
+        else:
+            actor_id = None
+        db.execute(
+            """INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, metadata, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)""",
+            (
+                str(uuid.uuid4()),
+                tenant_id,
+                actor_id,
+                action,
+                resource_type,
+                resource_id if resource_id and _is_uuid(resource_id) else None,
+                details,
+                _now(),
+            ),
+        )
+    except Exception:
+        pass
+
+
+@app.middleware("http")
+async def audit_log_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if request.method not in AUDITABLE_METHODS or db._pool is None:
+        return response
+    tenant_id = request.headers.get("X-Tenant-Id") or request.path_params.get("tenant_id")
+    actor_id = request.headers.get("X-User-Id")
+    resource_type = _audit_resource_type(request.url.path)
+    resource_id = _audit_resource_id(request)
+    details = json.dumps({
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": response.status_code,
+        "path_params": dict(request.path_params),
+    })
+    await asyncio.to_thread(_log_audit, tenant_id, actor_id, request.method, resource_type, resource_id, details)
+    return response
 
 
 @app.on_event("startup")
