@@ -5,7 +5,10 @@ This document tracks what is currently built in the `prototype/` directory versu
 ## Implemented
 
 - **FastAPI API** (`prototype/app.py`)
-  - Tenant, integration (with health + sync), resource, control, test, evidence, posture, audit, dashboard, policy, and RAG endpoints
+  - Tenant, integration, resource, control, test, evidence, posture, audit, dashboard, policy, and RAG endpoints
+  - Integration: create, get, health, test, sync, sync-job status, and sync-job listing
+  - Controls: create custom controls, framework mapping lookup, bulk multi-framework mappings, custom tests per control, and framework-specific control listing
+  - Evidence: list, create, detail, and file upload with local storage
   - Header-based tenant context and RBAC, plus JWT `Bearer` token support and a token endpoint
   - DB-backed user/role validation when `MOCK_AUTH` is not set
   - Audit logging middleware writing to `audit_log`
