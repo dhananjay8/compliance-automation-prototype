@@ -9,7 +9,8 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 
-from auth import TenantContext, get_tenant_context, require_admin_role
+from auth import TenantContext, get_tenant_context, issue_token, require_admin_role
+from connectors import AWSConnector, OktaConnector
 from db import db
 from engine import evaluate_rule
 from models import (
@@ -158,6 +159,15 @@ def create_tenant(
     return {"id": tenant_id, "name": name, "region": region}
 
 
+@app.post("/api/v1/auth/token")
+def auth_token(
+    tenant_id: str,
+    user_id: str,
+    role: str = Query(default="read_only"),
+):
+    return {"token": issue_token(tenant_id, user_id, role)}
+
+
 @app.get("/api/v1/tenants/{tenant_id}/readiness", response_model=PostureSummary)
 def tenant_readiness(
     tenant_id: str,
@@ -213,6 +223,23 @@ def sync_integration(
     return {"sync_job_id": job_id}
 
 
+@app.get("/api/v1/integrations/{integration_id}/health")
+def integration_health(
+    integration_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    integration = _get_integration(integration_id, ctx.tenant_id)
+    connector = integration["connector"].lower()
+    if connector == "aws":
+        result = AWSConnector().health_check()
+    elif connector == "okta":
+        result = OktaConnector().health_check()
+    else:
+        result = {"configured": False, "reason": "Unknown connector"}
+    return {"integration_id": integration_id, "connector": connector, **result}
+
+
 # ---------------------------------------------------------------------------
 # Resources
 # ---------------------------------------------------------------------------
@@ -264,6 +291,69 @@ def control_status(
     ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
     control = _get_common_control(control_id, ctx.tenant_id)
     return _control_detail(control, ctx.tenant_id)
+
+
+@app.post("/api/v1/controls")
+def create_control(
+    code: str,
+    statement: str,
+    domain: str = Query(default="uncategorized"),
+    owner_email: str | None = Query(default=None),
+    framework_code: str | None = Query(default=None),
+    section_code: str | None = Query(default=None),
+    requirement_text: str = Query(default=""),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    owner_id = None
+    if owner_email:
+        user = db.fetchone(
+            'SELECT id FROM "user" WHERE tenant_id = %s AND email = %s',
+            (ctx.tenant_id, owner_email),
+        )
+        owner_id = user["id"] if user else None
+    control_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO common_control (id, tenant_id, code, domain, statement, owner_id)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (control_id, ctx.tenant_id, code, domain, statement, owner_id),
+    )
+    if framework_code and requirement_text:
+        framework = db.fetchone(
+            "SELECT id FROM framework WHERE tenant_id = %s AND code = %s",
+            (ctx.tenant_id, framework_code),
+        )
+        if framework:
+            section_id = None
+            if section_code:
+                section = db.fetchone(
+                    "SELECT id FROM section WHERE framework_id = %s AND code = %s",
+                    (framework["id"], section_code),
+                )
+                section_id = section["id"] if section else None
+            db.execute(
+                """INSERT INTO framework_control (id, tenant_id, framework_id, section_id, common_control_id, requirement_text)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (str(uuid.uuid4()), ctx.tenant_id, framework["id"], section_id, control_id, requirement_text),
+            )
+    return _get_common_control(control_id, ctx.tenant_id)
+
+
+@app.get("/api/v1/controls/{control_id}/frameworks")
+def control_frameworks(
+    control_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only", "external_auditor")
+    _get_common_control(control_id, ctx.tenant_id)
+    return db.execute(
+        """SELECT f.id, f.code, f.name, fc.requirement_text, s.code as section_code, s.title as section_title
+           FROM framework_control fc
+           JOIN framework f ON f.id = fc.framework_id
+           LEFT JOIN section s ON s.id = fc.section_id
+           WHERE fc.common_control_id = %s AND fc.tenant_id = %s""",
+        (_parse_uuid(control_id), ctx.tenant_id),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +422,53 @@ def list_evidence(
     sql += " ORDER BY e.collected_at DESC"
     rows = db.execute(sql, tuple(params))
     return [EvidenceOut(**r) for r in rows]
+
+
+@app.post("/api/v1/evidence")
+def create_evidence(
+    test_result_id: str,
+    evidence_type: str = Query(default="document"),
+    description: str | None = Query(default=None),
+    storage_path: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    # Manual evidence can be attached to an existing test result for now
+    tr = db.fetchone(
+        "SELECT id FROM test_result WHERE id = %s AND tenant_id = %s",
+        (_parse_uuid(test_result_id), ctx.tenant_id),
+    )
+    if not tr:
+        raise HTTPException(status_code=404, detail="Test result not found")
+    evidence_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO evidence (id, tenant_id, test_result_id, evidence_type, storage_path, description, expires_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (evidence_id, ctx.tenant_id, test_result_id, evidence_type, storage_path, description, _now()),
+    )
+    return db.fetchone("SELECT * FROM evidence WHERE id = %s", (evidence_id,))
+
+
+@app.get("/api/v1/evidence/{evidence_id}")
+def get_evidence(
+    evidence_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    row = db.fetchone(
+        """SELECT e.*, t.name as test_name, r.external_id as resource_external_id,
+                  tr.status
+           FROM evidence e
+           JOIN test_result tr ON tr.id = e.test_result_id
+           JOIN test_run trun ON trun.id = tr.test_run_id
+           JOIN test t ON t.id = trun.test_id
+           LEFT JOIN resource r ON r.id = tr.resource_id
+           WHERE e.id = %s AND e.tenant_id = %s""",
+        (_parse_uuid(evidence_id), ctx.tenant_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +569,56 @@ def create_audit_request(
          payload.request_text, "open"),
     )
     return _get_audit_request(request_id)
+
+
+# ---------------------------------------------------------------------------
+# Policies
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/policies")
+def list_policies(
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return db.execute(
+        "SELECT * FROM policy WHERE tenant_id = %s AND active = true ORDER BY id DESC",
+        (ctx.tenant_id,),
+    )
+
+
+@app.post("/api/v1/policies")
+def create_policy(
+    title: str,
+    content: str | None = Query(default=None),
+    version: str | None = Query(default="1.0"),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    policy_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO policy (id, tenant_id, title, content, version)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (policy_id, ctx.tenant_id, title, content, version),
+    )
+    return db.fetchone("SELECT * FROM policy WHERE id = %s", (policy_id,))
+
+
+@app.post("/api/v1/policies/{policy_id}/acknowledge")
+def acknowledge_policy(
+    policy_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    if not ctx.user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing user id")
+    ack_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO policy_ack (id, tenant_id, policy_id, user_id)
+           VALUES (%s, %s, %s, %s)""",
+        (ack_id, ctx.tenant_id, _parse_uuid(policy_id), ctx.user_id),
+    )
+    return {"acknowledgement_id": ack_id, "policy_id": policy_id, "user_id": ctx.user_id}
 
 
 # ---------------------------------------------------------------------------

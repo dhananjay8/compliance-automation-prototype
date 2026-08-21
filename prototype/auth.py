@@ -1,6 +1,8 @@
 import os
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
+import jwt
 from fastapi import Header, HTTPException, Request, status
 
 from db import db
@@ -23,6 +25,30 @@ class TenantContext:
 @lru_cache(maxsize=1)
 def _mock_auth() -> bool:
     return os.getenv("MOCK_AUTH", "").lower() in ("1", "true", "yes")
+
+
+def _jwt_secret() -> str:
+    return os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+
+
+def issue_token(tenant_id: str, user_id: str, role: str) -> str:
+    return jwt.encode(
+        {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "role": role,
+            "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+        },
+        _jwt_secret(),
+        algorithm="HS256",
+    )
+
+
+def _decode_token(token: str) -> dict | None:
+    try:
+        return jwt.decode(token, _jwt_secret(), algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
 
 
 def _ensure_db() -> None:
@@ -67,6 +93,21 @@ def get_tenant_context(
     x_user_id: str | None = Header(default=None),
     x_user_role: str | None = Header(default=None),
 ) -> TenantContext:
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        payload = _decode_token(token)
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+        return TenantContext(
+            tenant_id=str(payload.get("tenant_id")),
+            user_id=payload.get("user_id"),
+            user_role=payload.get("role"),
+        )
+
     tenant_id = x_tenant_id or request.path_params.get("tenant_id")
     if not tenant_id:
         raise HTTPException(
@@ -83,9 +124,21 @@ def get_tenant_context(
 
 
 def require_admin_role(
+    request: Request,
     x_user_id: str | None = Header(default=None),
     x_user_role: str | None = Header(default=None),
 ) -> None:
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        payload = _decode_token(token)
+        if not payload or payload.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin role required",
+            )
+        return
+
     if _mock_auth():
         if (x_user_role or "") not in ("admin", "compliance_manager"):
             raise HTTPException(

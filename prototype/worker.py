@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from connectors import AWSConnector, OktaConnector
 from db import Database
 from engine import evaluate_rule
 from models import TestRunSummary
@@ -27,7 +28,7 @@ class SyncWorker:
             (job_id, tenant_id, integration_id, triggered_by, "manual", "running", _now()),
         )
 
-        resources = self._mock_resources_for_connector(connector)
+        resources = self._fetch_resources(integration)
         resource_type_ids = self._load_resource_type_map(tenant_id)
         synced_types: set[str] = set()
 
@@ -78,6 +79,26 @@ class SyncWorker:
             ("completed", _now(), job_id),
         )
         return job_id
+
+    def _fetch_resources(self, integration: dict[str, Any]) -> list[dict[str, Any]]:
+        connector = integration["connector"].lower()
+        if connector == "aws":
+            records = AWSConnector().list_resources()
+        elif connector == "okta":
+            records = OktaConnector().list_resources()
+        else:
+            records = []
+        if not records:
+            return self._mock_resources_for_connector(connector)
+        return [
+            {
+                "external_id": r.external_id,
+                "resource_type": r.resource_type,
+                "data": r.data,
+                "collected_at": r.collected_at,
+            }
+            for r in records
+        ]
 
     def _mock_resources_for_connector(self, connector: str) -> list[dict[str, Any]]:
         """Return sample resources whose source integration matches the connector name."""
