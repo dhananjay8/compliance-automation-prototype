@@ -347,6 +347,36 @@ def dashboard_posture(
     return _compute_posture(ctx.tenant_id)
 
 
+@app.get("/api/v1/dashboards/failures")
+def dashboard_failures(
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only", "external_auditor")
+    rows = db.execute(
+        """SELECT cc.id AS control_id,
+                  cc.code AS control_code,
+                  cc.statement,
+                  r.external_id AS resource_external_id,
+                  tr.status,
+                  tr.reason,
+                  tr.evaluated_at
+           FROM test_result tr
+           JOIN test_run trun ON trun.id = tr.test_run_id
+           JOIN control_test ct ON ct.test_id = trun.test_id AND ct.tenant_id = tr.tenant_id
+           JOIN common_control cc ON cc.id = ct.common_control_id AND cc.tenant_id = tr.tenant_id
+           LEFT JOIN resource r ON r.id = tr.resource_id
+           WHERE tr.tenant_id = %s
+             AND tr.status = 'NEEDS_ATTENTION'
+             AND trun.completed_at = (SELECT MAX(completed_at)
+                                      FROM test_run trun2
+                                      WHERE trun2.test_id = trun.test_id
+                                        AND trun2.tenant_id = tr.tenant_id)
+           ORDER BY tr.evaluated_at DESC""",
+        (ctx.tenant_id,),
+    )
+    return {"tenant_id": ctx.tenant_id, "failing_results": rows}
+
+
 # ---------------------------------------------------------------------------
 # Audits
 # ---------------------------------------------------------------------------

@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: compliance_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "test", "-d", "compliance_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  api:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./prototype:/app
+    ports:
+      - "8000:8000"
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: compliance_test
+      PGUSER: test
+      PGPASSWORD: testpass
+      MOCK_AUTH: "1"
+      PYTHONUNBUFFERED: "1"
+    command: >
+      bash -c "pip install --no-cache-dir -r /app/requirements.txt &&
+               uvicorn app:app --app-dir /app --host 0.0.0.0 --port 8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pgdata:
