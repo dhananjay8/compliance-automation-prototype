@@ -26,6 +26,12 @@ class IntegrationOut(BaseModel):
     last_sync_at: datetime | None
 
 
+class FrameworkMappingCreate(BaseModel):
+    framework_code: str
+    section_code: str | None = None
+    requirement_text: str = ""
+
+
 class TestCreate(BaseModel):
     name: str
     resource_type: str

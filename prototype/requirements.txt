@@ -5,3 +5,4 @@ psycopg[binary,pool]>=3.2
 pyjwt>=2.13
 pytest
 httpx
+python-multipart>=0.0.32

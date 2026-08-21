@@ -154,6 +154,66 @@ def main() -> None:
     _expect_ok(frameworks_res, "control frameworks")
     assert frameworks_res.json(), "expected at least one framework mapping"
 
+    # Bulk multi-framework mapping
+    mappings_res = client.post(
+        f"/api/v1/controls/{control_id}/mappings",
+        headers=_headers(user_id),
+        json=[
+            {"framework_code": "ISO27001", "requirement_text": "Access control policy"},
+            {"framework_code": "GDPR", "requirement_text": "Data protection by design"},
+        ],
+    )
+    _expect_ok(mappings_res, "bulk create mappings")
+    mapping_ids = mappings_res.json().get("created_mapping_ids", [])
+    assert len(mapping_ids) == 2, "expected 2 mappings"
+
+    list_mappings_res = client.get(
+        f"/api/v1/controls/{control_id}/mappings",
+        headers=_headers(user_id),
+    )
+    _expect_ok(list_mappings_res, "list control mappings")
+    mapped_codes = {m["framework_code"] for m in list_mappings_res.json()}
+    assert mapped_codes.issuperset({"ISO27001", "GDPR"}), "expected new mappings"
+
+    # Cross-framework control lookup
+    fw_controls_res = client.get(
+        "/api/v1/frameworks/SOC2/controls",
+        headers=_headers(user_id),
+    )
+    _expect_ok(fw_controls_res, "framework controls")
+    assert any(c["code"] == "CC-PHASE2-001" for c in fw_controls_res.json())
+
+    # Custom test for the control
+    test_res = client.post(
+        f"/api/v1/controls/{control_id}/tests",
+        headers=_headers(user_id),
+        json={
+            "name": "Phase 2 MFA test",
+            "resource_type": "UserAccount",
+            "rule": {"op": "eq", "path": ["mfa_enabled"], "value": True},
+            "schedule": "0 * * * *",
+            "common_control_ids": [control_id],
+        },
+    )
+    _expect_ok(test_res, "create control test")
+    created_test_id = test_res.json()["id"]
+
+    control_tests_res = client.get(
+        f"/api/v1/controls/{control_id}/tests",
+        headers=_headers(user_id),
+    )
+    _expect_ok(control_tests_res, "list control tests")
+    assert any(t["id"] == created_test_id for t in control_tests_res.json())
+
+    # File upload for manual evidence
+    upload_res = client.post(
+        "/api/v1/evidence/upload",
+        headers=_headers(user_id),
+        files={"uploaded": ("phase2-evidence.txt", b"manual evidence file", "text/plain")},
+    )
+    _expect_ok(upload_res, "upload evidence file")
+    storage_path = upload_res.json().get("storage_path")
+
     # Phase 2: policy + ack
     policy_res = client.post(
         "/api/v1/policies",
@@ -194,6 +254,7 @@ def main() -> None:
             "test_result_id": test_result_id,
             "evidence_type": "document",
             "description": "Phase 2 manual evidence upload",
+            "storage_path": storage_path,
         },
     )
     _expect_ok(new_evidence_res, "create manual evidence")

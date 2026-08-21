@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
 
 from auth import TenantContext, get_tenant_context, issue_token, require_admin_role
 from connectors import (
@@ -23,6 +23,7 @@ from models import (
     AuditRequestOut,
     ControlStatus,
     EvidenceOut,
+    FrameworkMappingCreate,
     FrameworkReadiness,
     IntegrationCreate,
     IntegrationOut,
@@ -452,6 +453,147 @@ def control_frameworks(
     )
 
 
+@app.post("/api/v1/controls/{control_id}/mappings")
+def create_control_mappings(
+    control_id: str,
+    payload: list[FrameworkMappingCreate],
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    _get_common_control(control_id, ctx.tenant_id)
+    created: list[str] = []
+    for m in payload:
+        framework = db.fetchone(
+            "SELECT id FROM framework WHERE tenant_id = %s AND code = %s",
+            (ctx.tenant_id, m.framework_code),
+        )
+        if not framework:
+            raise HTTPException(status_code=404, detail=f"Framework {m.framework_code} not found")
+        section_id = None
+        if m.section_code:
+            section = db.fetchone(
+                "SELECT id FROM section WHERE framework_id = %s AND code = %s",
+                (framework["id"], m.section_code),
+            )
+            if not section:
+                raise HTTPException(status_code=404, detail=f"Section {m.section_code} not found")
+            section_id = section["id"]
+        mapping_id = str(uuid.uuid4())
+        db.execute(
+            """INSERT INTO framework_control (id, tenant_id, framework_id, section_id, common_control_id, requirement_text)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (mapping_id, ctx.tenant_id, framework["id"], section_id, _parse_uuid(control_id), m.requirement_text),
+        )
+        created.append(mapping_id)
+    return {"created_mapping_ids": created}
+
+
+@app.get("/api/v1/controls/{control_id}/mappings")
+def list_control_mappings(
+    control_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    _get_common_control(control_id, ctx.tenant_id)
+    return db.execute(
+        """SELECT fc.id, f.code as framework_code, f.name as framework_name,
+                  s.code as section_code, s.title as section_title,
+                  fc.requirement_text
+           FROM framework_control fc
+           JOIN framework f ON f.id = fc.framework_id
+           LEFT JOIN section s ON s.id = fc.section_id
+           WHERE fc.common_control_id = %s AND fc.tenant_id = %s""",
+        (_parse_uuid(control_id), ctx.tenant_id),
+    )
+
+
+@app.delete("/api/v1/controls/{control_id}/mappings/{mapping_id}")
+def delete_control_mapping(
+    control_id: str,
+    mapping_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    _get_common_control(control_id, ctx.tenant_id)
+    db.execute(
+        "DELETE FROM framework_control WHERE id = %s AND common_control_id = %s AND tenant_id = %s",
+        (_parse_uuid(mapping_id), _parse_uuid(control_id), ctx.tenant_id),
+    )
+    return {"deleted": mapping_id}
+
+
+@app.post("/api/v1/controls/{control_id}/tests")
+def create_control_test(
+    control_id: str,
+    payload: TestCreate,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    _get_common_control(control_id, ctx.tenant_id)
+    test_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO test (id, tenant_id, name, resource_type, rule, schedule, active)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (test_id, ctx.tenant_id, payload.name, payload.resource_type, json.dumps(payload.rule),
+         payload.schedule, True),
+    )
+    db.execute(
+        """INSERT INTO control_test (id, tenant_id, common_control_id, test_id)
+           VALUES (%s, %s, %s, %s)""",
+        (str(uuid.uuid4()), ctx.tenant_id, _parse_uuid(control_id), test_id),
+    )
+    for cid in payload.common_control_ids:
+        if cid != control_id:
+            db.execute(
+                """INSERT INTO control_test (id, tenant_id, common_control_id, test_id)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT DO NOTHING""",
+                (str(uuid.uuid4()), ctx.tenant_id, _parse_uuid(cid), test_id),
+            )
+    return db.fetchone("SELECT * FROM test WHERE id = %s", (test_id,))
+
+
+@app.get("/api/v1/controls/{control_id}/tests")
+def list_control_tests(
+    control_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    _get_common_control(control_id, ctx.tenant_id)
+    return db.execute(
+        """SELECT t.*
+           FROM test t
+           JOIN control_test ct ON ct.test_id = t.id
+           WHERE ct.common_control_id = %s AND t.tenant_id = %s""",
+        (_parse_uuid(control_id), ctx.tenant_id),
+    )
+
+
+@app.get("/api/v1/frameworks/{framework_code}/controls")
+def framework_controls(
+    framework_code: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    framework = db.fetchone(
+        "SELECT id FROM framework WHERE tenant_id = %s AND code = %s",
+        (ctx.tenant_id, framework_code),
+    )
+    if not framework:
+        raise HTTPException(status_code=404, detail="Framework not found")
+    return db.execute(
+        """SELECT cc.id, cc.code, cc.domain, cc.statement, cc.active,
+                  fc.id as mapping_id, fc.requirement_text,
+                  s.code as section_code, s.title as section_title
+           FROM framework_control fc
+           JOIN common_control cc ON cc.id = fc.common_control_id
+           LEFT JOIN section s ON s.id = fc.section_id
+           WHERE fc.framework_id = %s AND fc.tenant_id = %s
+           ORDER BY s.code, cc.code""",
+        (framework["id"], ctx.tenant_id),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -565,6 +707,25 @@ def get_evidence(
     if not row:
         raise HTTPException(status_code=404, detail="Evidence not found")
     return row
+
+
+@app.post("/api/v1/evidence/upload")
+def upload_evidence_file(
+    uploaded: UploadFile = File(...),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    repo_root = Path(__file__).resolve().parent.parent
+    evidence_dir = repo_root / "data" / "evidence_files"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    file_id = str(uuid.uuid4())
+    dest = evidence_dir / f"{file_id}_{uploaded.filename}"
+    dest.write_bytes(uploaded.file.read())
+    return {
+        "file_id": file_id,
+        "filename": uploaded.filename,
+        "storage_path": str(dest.relative_to(repo_root)),
+    }
 
 
 # ---------------------------------------------------------------------------
