@@ -24,6 +24,7 @@ from models import (
     TestRunSummary,
 )
 from worker import SyncWorker, run_test
+from rag import RAGQuery, RAGResponse, RAGIndexRequest, rag as rag_service
 
 app = FastAPI(title="Compliance Automation Prototype", version="0.1.0")
 worker = SyncWorker(db)
@@ -316,6 +317,47 @@ def create_audit_request(
          payload.request_text, "open"),
     )
     return _get_audit_request(request_id)
+
+
+# ---------------------------------------------------------------------------
+# RAG
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/rag/query", response_model=RAGResponse)
+def rag_query(
+    payload: RAGQuery,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return rag_service.query(payload.query, ctx.tenant_id, ctx.user_role)
+
+
+@app.post("/api/v1/rag/index/rebuild")
+def rag_index_rebuild(
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    counts = rag_service.index_rebuild(ctx.tenant_id)
+    return {"indexed": counts}
+
+
+@app.post("/api/v1/rag/index/entity")
+def rag_index_entity(
+    payload: RAGIndexRequest,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    count = rag_service.index_entity(ctx.tenant_id, payload.entity_type, payload.entity_id)
+    return {"indexed": count}
+
+
+@app.get("/api/v1/rag/health")
+def rag_health(
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return rag_service.health(ctx.tenant_id)
 
 
 # ---------------------------------------------------------------------------

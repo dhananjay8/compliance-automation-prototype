@@ -260,3 +260,51 @@ CREATE INDEX IF NOT EXISTS idx_test_result_run ON test_result(test_run_id);
 CREATE INDEX IF NOT EXISTS idx_framework_control_common ON framework_control(common_control_id);
 CREATE INDEX IF NOT EXISTS idx_control_test_test ON control_test(test_id);
 CREATE INDEX IF NOT EXISTS idx_sync_job_status_created ON sync_job(status, created_at);
+
+-- RAG support
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE TABLE IF NOT EXISTS rag_document (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    entity_type text NOT NULL,
+    entity_id uuid NOT NULL,
+    source_type text NOT NULL DEFAULT 'TRUST_GRAPH',
+    content text NOT NULL,
+    content_hash text NOT NULL,
+    version integer NOT NULL DEFAULT 1,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_document_tenant_entity ON rag_document(tenant_id, entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS rag_chunk (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    rag_document_id uuid NOT NULL REFERENCES rag_document(id) ON DELETE CASCADE,
+    chunk_index integer NOT NULL,
+    content text NOT NULL,
+    content_hash text NOT NULL,
+    embedding jsonb,
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    UNIQUE (rag_document_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunk_document ON rag_chunk(rag_document_id);
+CREATE INDEX IF NOT EXISTS idx_rag_chunk_trgm ON rag_chunk USING gin (content gin_trgm_ops);
+
+CREATE TABLE IF NOT EXISTS rag_query_log (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    user_id uuid,
+    query text NOT NULL,
+    intent text,
+    entities jsonb,
+    latency_ms integer,
+    answer_status text,
+    created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_query_log_tenant_created ON rag_query_log(tenant_id, created_at);
