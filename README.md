@@ -1,60 +1,105 @@
 # Compliance Automation Prototype
 
-A Vanta-like continuous compliance automation prototype. This repository contains a deep technical case study, framework mappings, system architecture, data model, control normalization, connector architecture, security and scalability designs, a production roadmap, and a detailed implementation prompt to build a working demo.
+A Vanta-like continuous compliance automation prototype. This repository currently contains a working Python/FastAPI backend, PostgreSQL schema, seed data, a Podman-based local test flow, and a RAG (Retrieval-Augmented Generation) service for compliance Q&A.
 
 ## What is included
 
 | Directory | Purpose |
 |---|---|
-| `docs/` | Technical case study, framework mapping, architecture, data model, control normalization, connectors, scheduling, security, scalability, and roadmap |
+| `docs/` | Design documents: case study, framework mapping, architecture, data model, control normalization, connectors, scheduling, security, scalability, roadmap, and implementation status |
 | `architecture/` | Mermaid source files for end-to-end and data-model diagrams |
 | `data/` | Seed JSON files: frameworks, common controls, mappings, resource types, sample resources, evidence, tenant, and integration catalog |
-| `prototype/` | Starter database schema (`schema.sql`) and space for generated prototype code |
-| `prompts/` | `build-prototype.md` - a self-contained prompt to generate a full-stack demo |
-| `scripts/` | `generate_seed_data.py` - regenerates the JSON seed data |
+| `prototype/` | FastAPI backend (`app.py`), rule engine, worker, RAG pipeline, Pydantic models, and database schema |
+| `prompts/` | Implementation prompts: original `build-prototype.md` and the repo-aligned RAG prompt |
+| `podman/` | `test.sh` script for spinning up a local PostgreSQL + Redis test environment |
+| `scripts/` | `generate_seed_data.py` and `validate_seed_data.py` |
 
 ## Quick start
 
-1. Read `docs/01-case-study.md` for the Vanta technical case study.
-2. Read `docs/03-architecture.md` and `architecture/end-to-end.mmd` for the system design.
-3. Review `prototype/schema.sql` for the database DDL.
-4. Inspect `data/*.json` for sample frameworks, controls, resources, and evidence.
-5. Use `prompts/build-prototype.md` as the implementation prompt for an AI coding assistant or engineering team to build the demo in `prototype/`.
+1. Install Python dependencies:
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/pip install -r prototype/requirements.txt
+   ```
 
-## Regenerate seed data
+2. Start the local test database:
+   ```bash
+   ./podman/test.sh start
+   ```
+
+3. Run the FastAPI backend locally:
+   ```bash
+   .venv/bin/uvicorn app:app --app-dir prototype --port 8000 --reload
+   ```
+
+4. In a separate terminal, seed the database (uses the running podman Postgres):
+   ```bash
+   .venv/bin/python podman/seed_test_db.py
+   ```
+
+5. Try a RAG query:
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/rag/query \
+     -H "X-Tenant-Id: 00000000-0000-0000-0000-000000000001" \
+     -H "X-User-Id: <user-id-from-sample-tenant>" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "What is the current status of SOC 2 CC6.1?"}'
+   ```
+
+For local dry runs without a populated `user` table, set `MOCK_AUTH=1` and use the `X-User-Role` header:
+   ```bash
+   MOCK_AUTH=1 .venv/bin/uvicorn app:app --app-dir prototype --port 8000
+   ```
+
+## Regenerate and validate seed data
 
 ```bash
 python3 scripts/generate_seed_data.py
-```
-
-Optional root override (useful in CI or non-standard checkouts):
-
-```bash
-COMPLIANCE_PROTOTYPE_ROOT=$(pwd) python3 scripts/generate_seed_data.py
-```
-
-## Dry-run validation
-
-Run a logical validation pass across all seed JSON files without starting services:
-
-```bash
 python3 scripts/validate_seed_data.py
-```
-
-Fail on warnings as well:
-
-```bash
 python3 scripts/validate_seed_data.py --strict-warnings
 ```
 
-## Tech stack recommendation
+## Run the local test suite
 
-- Backend: Node.js 20 + Express + TypeScript + Prisma
-- Database: PostgreSQL 15
-- Queue/Cache: Redis + BullMQ
-- Frontend: React 18 + Vite + TailwindCSS + Recharts
-- Connector worker: Python 3.11
-- Infrastructure: Docker Compose
+```bash
+PYTHONPATH=prototype .venv/bin/pytest prototype/tests/ -q
+```
+
+For the full Podman-based integration test (validate, start, seed, assertions):
+
+```bash
+./podman/test.sh test
+```
+
+## Core API surface
+
+- Tenant: `POST /api/v1/tenants`, `GET /api/v1/tenants/{id}/readiness`
+- Integrations: `POST /api/v1/integrations`, `POST /api/v1/integrations/{id}/sync`, `GET /api/v1/integrations`
+- Resources: `GET /api/v1/resources`
+- Controls: `GET /api/v1/controls`, `GET /api/v1/controls/{id}/status`
+- Tests: `POST /api/v1/tests`, `POST /api/v1/tests/{id}/run`
+- Evidence: `GET /api/v1/evidence`
+- Posture: `GET /api/v1/dashboards/posture`
+- Audits: `GET /api/v1/audits`, `GET /api/v1/audits/{id}/requests`, `POST /api/v1/audits/{id}/requests`
+- RAG: `POST /api/v1/rag/query`, `POST /api/v1/rag/index/rebuild`, `POST /api/v1/rag/index/entity`, `GET /api/v1/rag/health`
+
+## Tech stack
+
+- Backend: Python 3.11 + FastAPI + Pydantic v2
+- Database: PostgreSQL 15 (psycopg 3)
+- Rule engine: Python (`prototype/engine.py`)
+- Worker: Python (`prototype/worker.py`) with mock AWS/Okta resource sync
+- Local infrastructure: Podman (`podman/test.sh`)
+- Frontend: **not yet implemented**
+- Queue/Scheduler/Drift: **not yet implemented**
+
+## Auth headers
+
+By default, `auth.py` validates the `X-User-Id` header against the `user` table. For mock/dry-run scenarios, set `MOCK_AUTH=1` and pass:
+
+- `X-Tenant-Id`
+- `X-User-Id` (optional)
+- `X-User-Role` (`admin`, `compliance_manager`, `control_owner`, `auditor`, `read_only`, `external_auditor`)
 
 ## Public sources used
 
