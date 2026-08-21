@@ -66,7 +66,9 @@ def main() -> None:
     _expect_ok(list_res, "list integrations")
     integrations = list_res.json()
     assert integrations, "no integrations seeded"
-    integration = integrations[0]
+    supported = [i for i in integrations if i.get("connector", "").lower() in ("aws", "okta")]
+    assert supported, "no aws/okta integration in seed"
+    integration = supported[0]
     integration_id = integration["id"]
 
     health_res = client.get(
@@ -76,12 +78,44 @@ def main() -> None:
     _expect_ok(health_res, "integration health")
     assert health_res.json().get("configured") in (True, False)
 
+    # Get single integration
+    get_res = client.get(
+        f"/api/v1/integrations/{integration_id}",
+        headers=_headers(user_id),
+    )
+    _expect_ok(get_res, "get integration")
+    assert get_res.json().get("status")
+
+    # Test connector credentials (Phase 1 full-proof)
+    test_res = client.post(
+        f"/api/v1/integrations/{integration_id}/test",
+        headers=_headers(user_id),
+    )
+    _expect_ok(test_res, "test integration")
+    assert test_res.json().get("configured") in (True, False)
+
     sync_res = client.post(
         f"/api/v1/integrations/{integration_id}/sync",
         headers=_headers(user_id),
     )
     _expect_ok(sync_res, "sync integration")
-    assert sync_res.json().get("sync_job_id")
+    sync_job_id = sync_res.json().get("sync_job_id")
+    assert sync_job_id
+
+    # Poll sync job status
+    job_res = client.get(
+        f"/api/v1/sync-jobs/{sync_job_id}",
+        headers=_headers(user_id),
+    )
+    _expect_ok(job_res, "get sync job")
+    assert job_res.json().get("status") in ("completed", "running", "pending", "failed")
+
+    jobs_res = client.get(
+        f"/api/v1/integrations/{integration_id}/sync-jobs",
+        headers=_headers(user_id),
+    )
+    _expect_ok(jobs_res, "list sync jobs")
+    assert any(j["id"] == sync_job_id for j in jobs_res.json())
 
     resources_res = client.get("/api/v1/resources", headers=_headers(user_id))
     _expect_ok(resources_res, "list resources")

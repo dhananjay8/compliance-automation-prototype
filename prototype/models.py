@@ -14,12 +14,14 @@ class IntegrationCreate(BaseModel):
     connector: str
     name: str
     config: dict[str, Any] = Field(default_factory=dict)
+    credentials: dict[str, Any] = Field(default_factory=dict)
 
 
 class IntegrationOut(BaseModel):
     id: str
     connector: str
     name: str
+    config: dict[str, Any] = Field(default_factory=dict)
     status: str
     last_sync_at: datetime | None
 

@@ -10,7 +10,12 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 
 from auth import TenantContext, get_tenant_context, issue_token, require_admin_role
-from connectors import AWSConnector, OktaConnector
+from connectors import (
+    AWSConnector,
+    AWSCredentials,
+    OktaConnector,
+    OktaCredentials,
+)
 from db import db
 from engine import evaluate_rule
 from models import (
@@ -193,9 +198,9 @@ def create_integration(
         """INSERT INTO integration (id, tenant_id, connector, name, config, credentials, status)
            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
         (integration_id, ctx.tenant_id, payload.connector, payload.name,
-         json.dumps(payload.config), json.dumps({}), "connected"),
+         json.dumps(payload.config), json.dumps(payload.credentials), "pending"),
     )
-    return _integration_row(integration_id)
+    return _integration_row(integration_id, ctx.tenant_id)
 
 
 @app.get("/api/v1/integrations")
@@ -223,6 +228,34 @@ def sync_integration(
     return {"sync_job_id": job_id}
 
 
+def _connector_credentials(integration: dict[str, Any]) -> tuple[AWSConnector | OktaConnector, str]:
+    connector = integration["connector"].lower()
+    credentials = integration.get("credentials") or {}
+    if connector == "aws":
+        creds = AWSCredentials(
+            access_key_id=credentials.get("access_key_id"),
+            secret_access_key=credentials.get("secret_access_key"),
+            region=credentials.get("region"),
+        )
+        return AWSConnector(creds), "aws"
+    elif connector == "okta":
+        creds = OktaCredentials(
+            api_token=credentials.get("api_token"),
+            base_url=credentials.get("base_url"),
+        )
+        return OktaConnector(creds), "okta"
+    return None, connector
+
+
+@app.get("/api/v1/integrations/{integration_id}", response_model=IntegrationOut)
+def get_integration(
+    integration_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return _integration_row(integration_id, ctx.tenant_id)
+
+
 @app.get("/api/v1/integrations/{integration_id}/health")
 def integration_health(
     integration_id: str,
@@ -230,14 +263,77 @@ def integration_health(
 ):
     ctx.require_role("admin", "compliance_manager", "control_owner")
     integration = _get_integration(integration_id, ctx.tenant_id)
-    connector = integration["connector"].lower()
-    if connector == "aws":
-        result = AWSConnector().health_check()
-    elif connector == "okta":
-        result = OktaConnector().health_check()
-    else:
+    connector, name = _connector_credentials(integration)
+    if connector is None:
         result = {"configured": False, "reason": "Unknown connector"}
-    return {"integration_id": integration_id, "connector": connector, **result}
+    else:
+        result = connector.health_check()
+    return {"integration_id": integration_id, "connector": name, **result}
+
+
+@app.post("/api/v1/integrations/{integration_id}/test")
+def test_integration(
+    integration_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    integration = _get_integration(integration_id, ctx.tenant_id)
+    connector, name = _connector_credentials(integration)
+    if connector is None:
+        db.execute(
+            "UPDATE integration SET status = 'error' WHERE id = %s",
+            (_parse_uuid(integration_id),),
+        )
+        return {
+            "integration_id": integration_id,
+            "connector": name,
+            "configured": False,
+            "reason": "Unknown connector",
+            "tested_at": _now(),
+        }
+    health = connector.health_check()
+    if not health.get("configured"):
+        db.execute(
+            "UPDATE integration SET status = 'error' WHERE id = %s",
+            (_parse_uuid(integration_id),),
+        )
+        return {"integration_id": integration_id, "connector": name, **health, "tested_at": _now()}
+    db.execute(
+        "UPDATE integration SET status = 'connected' WHERE id = %s",
+        (_parse_uuid(integration_id),),
+    )
+    return {"integration_id": integration_id, "connector": name, **health, "tested_at": _now()}
+
+
+@app.get("/api/v1/integrations/{integration_id}/sync-jobs")
+def list_integration_sync_jobs(
+    integration_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    _get_integration(integration_id, ctx.tenant_id)
+    return db.execute(
+        "SELECT * FROM sync_job WHERE tenant_id = %s AND integration_id = %s ORDER BY started_at DESC",
+        (ctx.tenant_id, _parse_uuid(integration_id)),
+    )
+
+
+@app.get("/api/v1/sync-jobs/{job_id}")
+def get_sync_job(
+    job_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    row = db.fetchone(
+        """SELECT sj.*, i.connector
+           FROM sync_job sj
+           JOIN integration i ON i.id = sj.integration_id
+           WHERE sj.id = %s AND sj.tenant_id = %s""",
+        (_parse_uuid(job_id), ctx.tenant_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Sync job not found")
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -677,8 +773,13 @@ def _get_integration(integration_id: str, tenant_id: str) -> dict[str, Any]:
     return dict(row)
 
 
-def _integration_row(integration_id: str) -> IntegrationOut:
-    row = db.fetchone("SELECT * FROM integration WHERE id = %s", (integration_id,))
+def _integration_row(integration_id: str, tenant_id: str) -> IntegrationOut:
+    row = db.fetchone(
+        "SELECT * FROM integration WHERE id = %s AND tenant_id = %s",
+        (_parse_uuid(integration_id), tenant_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Integration not found")
     return IntegrationOut(**row)
 
 

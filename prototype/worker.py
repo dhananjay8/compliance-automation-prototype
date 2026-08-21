@@ -6,7 +6,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from connectors import AWSConnector, OktaConnector
+from connectors import (
+    AWSConnector,
+    AWSCredentials,
+    OktaConnector,
+    OktaCredentials,
+)
 from db import Database
 from engine import evaluate_rule
 from models import TestRunSummary
@@ -28,64 +33,90 @@ class SyncWorker:
             (job_id, tenant_id, integration_id, triggered_by, "manual", "running", _now()),
         )
 
-        resources = self._fetch_resources(integration)
-        resource_type_ids = self._load_resource_type_map(tenant_id)
-        synced_types: set[str] = set()
+        resources: list[dict[str, Any]] = []
+        try:
+            resources = self._fetch_resources(integration)
+            resource_type_ids = self._load_resource_type_map(tenant_id)
+            synced_types: set[str] = set()
 
-        for r in resources:
-            resource_type = r["resource_type"]
-            if resource_type not in resource_type_ids:
-                continue
-            rt_id = resource_type_ids[resource_type]
-            synced_types.add(resource_type)
+            for r in resources:
+                resource_type = r["resource_type"]
+                if resource_type not in resource_type_ids:
+                    continue
+                rt_id = resource_type_ids[resource_type]
+                synced_types.add(resource_type)
 
-            data = r.get("data", {})
-            collected_at = _parse_time(r.get("collected_at")) or _now()
-            data_hash = _hash(data)
-            external_id = r.get("external_id", r["id"])
+                data = r.get("data", {})
+                collected_at = _parse_time(r.get("collected_at")) or _now()
+                data_hash = _hash(data)
+                external_id = r.get("external_id", r["id"])
+
+                self.db.execute(
+                    """INSERT INTO resource (id, tenant_id, integration_id, resource_type_id, external_id, data, collected_at, hash)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (tenant_id, integration_id, external_id)
+                       DO UPDATE SET data = EXCLUDED.data,
+                                     collected_at = EXCLUDED.collected_at,
+                                     hash = EXCLUDED.hash""",
+                    (str(uuid.uuid5(uuid.NAMESPACE_URL, f"{tenant_id}:{integration_id}:{external_id}")),
+                     tenant_id, integration_id, rt_id, external_id,
+                     json.dumps(data), collected_at, data_hash),
+                )
 
             self.db.execute(
-                """INSERT INTO resource (id, tenant_id, integration_id, resource_type_id, external_id, data, collected_at, hash)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (tenant_id, integration_id, external_id)
-                   DO UPDATE SET data = EXCLUDED.data,
-                                 collected_at = EXCLUDED.collected_at,
-                                 hash = EXCLUDED.hash""",
-                (str(uuid.uuid5(uuid.NAMESPACE_URL, f"{tenant_id}:{integration_id}:{external_id}")),
-                 tenant_id, integration_id, rt_id, external_id,
-                 json.dumps(data), collected_at, data_hash),
+                """UPDATE integration
+                   SET last_sync_at = %s, status = %s
+                   WHERE id = %s""",
+                (_now(), "connected", integration_id),
             )
 
-        self.db.execute(
-            """UPDATE integration
-               SET last_sync_at = %s, status = %s
-               WHERE id = %s""",
-            (_now(), "connected", integration_id),
-        )
+            # Run tests for every resource type touched by this sync
+            if synced_types:
+                tests = self.db.execute(
+                    "SELECT * FROM test WHERE tenant_id = %s AND resource_type = ANY(%s) AND active = true",
+                    (tenant_id, list(synced_types)),
+                )
+                for test in tests:
+                    run_test(self.db, dict(test))
 
-        # Run tests for every resource type touched by this sync
-        if synced_types:
-            tests = self.db.execute(
-                "SELECT * FROM test WHERE tenant_id = %s AND resource_type = ANY(%s) AND active = true",
-                (tenant_id, list(synced_types)),
+            self.db.execute(
+                """UPDATE sync_job
+                   SET status = %s, completed_at = %s, watermark = %s
+                   WHERE id = %s""",
+                ("completed", _now(), str(len(resources)), job_id),
             )
-            for test in tests:
-                run_test(self.db, dict(test))
-
-        self.db.execute(
-            """UPDATE sync_job
-               SET status = %s, completed_at = %s
-               WHERE id = %s""",
-            ("completed", _now(), job_id),
-        )
+        except Exception as exc:
+            error = str(exc)
+            self.db.execute(
+                """UPDATE integration
+                   SET status = %s
+                   WHERE id = %s""",
+                ("error", integration_id),
+            )
+            self.db.execute(
+                """UPDATE sync_job
+                   SET status = %s, completed_at = %s, error = %s, watermark = %s
+                   WHERE id = %s""",
+                ("failed", _now(), error, str(len(resources)), job_id),
+            )
         return job_id
 
     def _fetch_resources(self, integration: dict[str, Any]) -> list[dict[str, Any]]:
         connector = integration["connector"].lower()
+        credentials = integration.get("credentials") or {}
         if connector == "aws":
-            records = AWSConnector().list_resources()
+            creds = AWSCredentials(
+                access_key_id=credentials.get("access_key_id"),
+                secret_access_key=credentials.get("secret_access_key"),
+                region=credentials.get("region"),
+            )
+            records = AWSConnector(creds).list_resources()
         elif connector == "okta":
-            records = OktaConnector().list_resources()
+            creds = OktaCredentials(
+                api_token=credentials.get("api_token"),
+                base_url=credentials.get("base_url"),
+            )
+            records = OktaConnector(creds).list_resources()
         else:
             records = []
         if not records:
