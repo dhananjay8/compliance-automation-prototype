@@ -5,6 +5,7 @@ This document tracks what is currently built in the `prototype/` directory versu
 ## Implemented
 
 - **FastAPI API** (`prototype/app.py`)
+  - CORS enabled for the React frontend
   - Tenant, integration, resource, control, test, evidence, posture, audit, dashboard, policy, and RAG endpoints
   - Integration: create, get, health, test, sync, sync-job status, and sync-job listing
   - Controls: create custom controls, framework mapping lookup, bulk multi-framework mappings, custom tests per control, and framework-specific control listing
@@ -32,10 +33,13 @@ This document tracks what is currently built in the `prototype/` directory versu
   - `scripts/e2e_phase0_2.py` (Phase 0-2 end-to-end smoke test)
 - **Unit tests** (`prototype/tests/`)
   - RAG, rule engine, and auth (mock mode + JWT)
+- **Frontend** (`frontend/`)
+  - React + Vite + Tailwind CSS SPA
+  - Dashboard, integrations, controls, evidence, and policies views
+  - Wired to FastAPI with CORS and Vite proxy
 
 ## Not yet implemented
 
-- **Frontend**: No React/Vite/Tailwind app exists
 - **Full-stack build prompt**: `prompts/build-prototype.md` still describes the original Node/Express/Prisma/React spec
 - **Production auth**: SSO, SAML/OIDC, SCIM, and field-level encryption
 - **Real connectors**: Adapters still fall back to mock samples for AWS/Okta; no live API calls

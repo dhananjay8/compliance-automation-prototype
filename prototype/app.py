@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from auth import TenantContext, get_tenant_context, issue_token, require_admin_role
 from connectors import (
@@ -35,6 +36,13 @@ from worker import SyncWorker, run_test
 from rag import RAGQuery, RAGResponse, RAGIndexRequest, rag as rag_service
 
 app = FastAPI(title="Compliance Automation Prototype", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 worker = SyncWorker(db)
 
 AUDITABLE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
