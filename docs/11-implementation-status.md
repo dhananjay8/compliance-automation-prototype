@@ -11,6 +11,7 @@ This document tracks what is currently built in the `prototype/` directory versu
   - Controls: create custom controls, framework mapping lookup, bulk multi-framework mappings, custom tests per control, and framework-specific control listing
   - Evidence: list, create, detail, and file upload with local storage
   - Phase 3 workflow/audit portal endpoints: remediations, access review campaigns, vendor risk questionnaires, audit information requests, and webhook subscriptions/deliveries
+  - Phase 4 scale/intelligence endpoints: drift detection, evidence freshness/recollection, posture analytics/trend, scheduled job runner, and mock AI remediation suggestions
   - Header-based tenant context and RBAC, plus JWT `Bearer` token support and a token endpoint
   - DB-backed user/role validation when `MOCK_AUTH` is not set
   - Audit logging middleware writing to `audit_log`
@@ -42,17 +43,18 @@ This document tracks what is currently built in the `prototype/` directory versu
   - React + Vite + Tailwind CSS SPA
   - Dashboard, integrations, controls, evidence, and policies views
   - Phase 3 Workflow & Audit portal view with remediations, access reviews, vendors, audits, and webhooks
+  - Phase 4 Intelligence view with drift detection, evidence freshness, scheduler, analytics, and AI suggestions
   - Wired to FastAPI with CORS and Vite proxy
 
 ## Not yet implemented
 
 - **Full-stack build prompt**: `prompts/build-prototype.md` still describes the original Node/Express/Prisma/React spec
 - **Production auth**: SSO, SAML/OIDC, SCIM, and field-level encryption
-- **Queue/scheduler**: No BullMQ, Redis-backed scheduler, or recurring sync
-- **Drift detection**: No continuous drift engine or stale-evidence alerts
+- **Production-grade async queue**: No BullMQ, Kafka, SQS, or Redis-backed worker queue; current scheduler runs in-process with APScheduler
 - **Production ticketing integrations**: No Jira / ServiceNow adapters; only ticket ID attachment
 - **Multi-tenancy features**: No regional cells, data residency, or tenant-scoped connection pools
 - **Cross-resource joins**: `engine.py` evaluates one resource at a time
+- **15+ production connectors**: Only AWS and Okta connectors are implemented
 
 ## Roadmap mapping
 
@@ -60,4 +62,4 @@ This document tracks what is currently built in the `prototype/` directory versu
 - **Phase 1** (MVP ingestion + SOC 2): complete — real AWS/Okta adapters, frontend, connector SDK, integration health, sync wiring, dashboards, and evidence collection are implemented
 - **Phase 2** (Multi-framework + custom controls): largely complete — custom control creation, framework mapping lookup, policy management, acknowledgements, and manual evidence upload are implemented
 - **Phase 3** (Workflows + audit portal): largely complete — remediation workflows, access review campaigns, vendor risk questionnaires, auditor portal with information requests, webhook subscriptions/deliveries, and frontend coverage are implemented
-- **Phase 4** (Scale + intelligence): not started
+- **Phase 4** (Scale + intelligence): largely complete — drift detection engine, evidence freshness monitoring, in-process scheduler for recurring sync/tests, posture history/trend analytics, mock AI remediation suggestions, and frontend Intelligence view are implemented

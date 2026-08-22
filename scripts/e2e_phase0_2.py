@@ -396,7 +396,76 @@ def main() -> None:
     _expect_ok(deliveries_res, "list webhook deliveries")
     assert len(deliveries_res.json()) >= 1, "expected webhook delivery records"
 
-    print("Phase 0-3 E2E: all assertions passed")
+    # Phase 4: analytics and posture snapshot
+    snapshot_res = client.post(
+        "/api/v1/analytics/posture",
+        headers=_headers(user_id),
+    )
+    _expect_ok(snapshot_res, "snapshot posture")
+
+    history_res = client.get(
+        "/api/v1/analytics/posture",
+        headers=_headers(user_id),
+    )
+    _expect_ok(history_res, "posture history")
+    assert len(history_res.json()) >= 1, "expected posture history records"
+
+    trend_res = client.get(
+        "/api/v1/analytics/trend",
+        headers=_headers(user_id),
+    )
+    _expect_ok(trend_res, "control trend")
+
+    # Phase 4: stale evidence
+    stale_res = client.get(
+        "/api/v1/evidence/stale/list",
+        headers=_headers(user_id),
+    )
+    _expect_ok(stale_res, "list stale evidence")
+
+    # Phase 4: scheduler
+    jobs_res = client.get(
+        "/api/v1/scheduler/jobs",
+        headers=_headers(user_id),
+    )
+    _expect_ok(jobs_res, "list scheduler jobs")
+
+    tick_res = client.post(
+        "/api/v1/scheduler/tick",
+        headers=_headers(user_id),
+    )
+    _expect_ok(tick_res, "scheduler tick")
+
+    # Phase 4: AI suggestion
+    ai_res = client.post(
+        "/api/v1/ai/suggest-remediation",
+        headers=_headers(user_id),
+        params={"finding": "MFA disabled on admin account"},
+    )
+    _expect_ok(ai_res, "ai suggest remediation")
+    assert "suggestions" in ai_res.json(), "expected suggestions"
+
+    # Phase 4: drift detection uses an integration if one exists
+    integrations_res = client.get(
+        "/api/v1/integrations",
+        headers=_headers(user_id),
+    )
+    _expect_ok(integrations_res, "list integrations for drift")
+    integrations = integrations_res.json()
+    if integrations:
+        drift_res = client.post(
+            "/api/v1/drift/detect",
+            headers=_headers(user_id),
+            params={"integration_id": integrations[0]["id"]},
+        )
+        _expect_ok(drift_res, "trigger drift detection")
+        drift_list_res = client.get(
+            "/api/v1/drift",
+            headers=_headers(user_id),
+        )
+        _expect_ok(drift_list_res, "list drift detections")
+
+    print("Phase 0-4 E2E: all assertions passed")
 
 
 if __name__ == "__main__":

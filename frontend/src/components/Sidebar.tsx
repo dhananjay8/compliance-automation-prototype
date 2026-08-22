@@ -1,4 +1,4 @@
-import { LayoutDashboard, Plug, ShieldCheck, FileText, BookOpen, Workflow } from 'lucide-react'
+import { LayoutDashboard, Plug, ShieldCheck, FileText, BookOpen, Workflow, BarChart3 } from 'lucide-react'
 
 type Props = { page: string; onChange: (page: string) => void }
 
@@ -9,6 +9,7 @@ const items = [
   { id: 'evidence', label: 'Evidence', icon: FileText },
   { id: 'policies', label: 'Policies', icon: BookOpen },
   { id: 'workflows', label: 'Workflows', icon: Workflow },
+  { id: 'intelligence', label: 'Intelligence', icon: BarChart3 },
 ]
 
 export default function Sidebar({ page, onChange }: Props) {

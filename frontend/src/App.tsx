@@ -6,8 +6,9 @@ import ControlsPage from './pages/ControlsPage'
 import EvidencePage from './pages/EvidencePage'
 import PoliciesPage from './pages/PoliciesPage'
 import WorkflowsPage from './pages/WorkflowsPage'
+import IntelligencePage from './pages/IntelligencePage'
 
-type Page = 'dashboard' | 'integrations' | 'controls' | 'evidence' | 'policies' | 'workflows'
+type Page = 'dashboard' | 'integrations' | 'controls' | 'evidence' | 'policies' | 'workflows' | 'intelligence'
 
 const pages: Record<Page, () => ReactNode> = {
   dashboard: DashboardPage,
@@ -16,6 +17,7 @@ const pages: Record<Page, () => ReactNode> = {
   evidence: EvidencePage,
   policies: PoliciesPage,
   workflows: WorkflowsPage,
+  intelligence: IntelligencePage,
 }
 
 export default function App() {

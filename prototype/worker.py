@@ -13,6 +13,7 @@ from connectors import (
     OktaCredentials,
 )
 from db import Database
+from drift import detect_drift_for_integration
 from engine import evaluate_rule
 from models import TestRunSummary
 
@@ -78,6 +79,12 @@ class SyncWorker:
                 )
                 for test in tests:
                     run_test(self.db, dict(test))
+
+            try:
+                detect_drift_for_integration(self.db, integration_id, tenant_id)
+            except Exception:
+                # Drift detection must not fail the sync job.
+                pass
 
             self.db.execute(
                 """UPDATE sync_job

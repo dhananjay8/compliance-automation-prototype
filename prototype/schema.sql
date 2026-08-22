@@ -359,3 +359,56 @@ ALTER TABLE audit_request
     ADD COLUMN IF NOT EXISTS response_text text,
     ADD COLUMN IF NOT EXISTS evidence_id uuid REFERENCES evidence(id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS responded_at timestamp with time zone;
+
+-- Phase 4: drift detection, posture history, and scheduling metadata
+CREATE TABLE IF NOT EXISTS resource_baseline (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    integration_id uuid NOT NULL REFERENCES integration(id) ON DELETE CASCADE,
+    resource_type_id uuid NOT NULL REFERENCES resource_type(id) ON DELETE CASCADE,
+    external_id text NOT NULL,
+    data jsonb NOT NULL,
+    hash text NOT NULL,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, integration_id, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS drift_detection (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    integration_id uuid NOT NULL REFERENCES integration(id) ON DELETE CASCADE,
+    resource_id uuid REFERENCES resource(id) ON DELETE SET NULL,
+    resource_type text NOT NULL,
+    external_id text NOT NULL,
+    drift_type text NOT NULL CHECK (drift_type IN ('added', 'removed', 'changed')),
+    severity text NOT NULL DEFAULT 'medium' CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+    summary text,
+    previous_hash text,
+    current_hash text,
+    acknowledged boolean NOT NULL DEFAULT false,
+    created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS posture_history (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    recorded_at timestamp with time zone NOT NULL DEFAULT now(),
+    total_controls integer NOT NULL DEFAULT 0,
+    ok_controls integer NOT NULL DEFAULT 0,
+    needs_attention_controls integer NOT NULL DEFAULT 0,
+    readiness_pct numeric(5,2) NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_resource_baseline_tenant ON resource_baseline(tenant_id, integration_id);
+CREATE INDEX IF NOT EXISTS idx_drift_detection_tenant ON drift_detection(tenant_id, acknowledged, created_at);
+CREATE INDEX IF NOT EXISTS idx_posture_history_tenant ON posture_history(tenant_id, recorded_at);
+
+ALTER TABLE integration
+    ADD COLUMN IF NOT EXISTS schedule text DEFAULT '0 * * * *',
+    ADD COLUMN IF NOT EXISTS last_run_at timestamp with time zone,
+    ADD COLUMN IF NOT EXISTS next_run_at timestamp with time zone;
+
+ALTER TABLE test
+    ADD COLUMN IF NOT EXISTS last_run_at timestamp with time zone,
+    ADD COLUMN IF NOT EXISTS next_run_at timestamp with time zone;

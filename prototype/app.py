@@ -2,11 +2,12 @@ import asyncio
 import json
 import os
 import uuid
-from contextlib import contextmanager
-from datetime import datetime, timezone
+from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from analytics import _control_status, compute_posture
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -34,8 +35,25 @@ from models import (
 )
 from worker import SyncWorker, run_test
 from rag import RAGQuery, RAGResponse, RAGIndexRequest, rag as rag_service
+from drift import detect_drift_for_integration, list_drift, acknowledge_drift
+from scheduler import ComplianceScheduler, ENABLE_SCHEDULER, run_due_jobs, trigger_job_now
 
-app = FastAPI(title="Compliance Automation Prototype", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.configure()
+    schema_path = Path(__file__).resolve().parent / "schema.sql"
+    db.init_schema(str(schema_path))
+    scheduler = ComplianceScheduler(db)
+    if ENABLE_SCHEDULER:
+        scheduler.start()
+    yield
+    scheduler.shutdown()
+    if db._pool:
+        db._pool.closeall()
+
+
+app = FastAPI(title="Compliance Automation Prototype", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -130,19 +148,6 @@ async def audit_log_middleware(request: Request, call_next):
     return response
 
 
-@app.on_event("startup")
-def startup() -> None:
-    db.configure()
-    schema_path = Path(__file__).resolve().parent / "schema.sql"
-    db.init_schema(str(schema_path))
-
-
-@app.on_event("shutdown")
-def shutdown() -> None:
-    if db._pool:
-        db._pool.closeall()
-
-
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -194,7 +199,7 @@ def tenant_readiness(
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
-    return _compute_posture(tenant_id)
+    return compute_posture(tenant_id)
 
 
 # ---------------------------------------------------------------------------
@@ -752,7 +757,7 @@ def dashboard_posture(
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
-    return _compute_posture(ctx.tenant_id)
+    return compute_posture(ctx.tenant_id)
 
 
 @app.get("/api/v1/dashboards/failures")
@@ -1012,123 +1017,6 @@ def _hydrate_control_status(control: dict[str, Any], tenant_id: str) -> dict[str
             last_evaluated_at=status_data["last_evaluated_at"],
         ).dict(),
     }
-
-
-def _control_status(tenant_id: str, common_control_id: str) -> dict[str, Any]:
-    rows = db.execute(
-        """SELECT t.id as test_id, tr.status, e.id as evidence_id, tr.evaluated_at
-           FROM control_test ct
-           JOIN test t ON t.id = ct.test_id
-           LEFT JOIN LATERAL (
-               SELECT trun.id, trun.completed_at
-               FROM test_run trun
-               WHERE trun.test_id = t.id AND trun.tenant_id = %s AND trun.status = 'completed'
-               ORDER BY trun.completed_at DESC
-               LIMIT 1
-           ) latest_run ON true
-           LEFT JOIN test_result tr ON tr.test_run_id = latest_run.id
-           LEFT JOIN evidence e ON e.test_result_id = tr.id
-           WHERE ct.common_control_id = %s AND ct.tenant_id = %s""",
-        (tenant_id, common_control_id, tenant_id),
-    )
-    if not rows:
-        return {"status": "NOT_TESTED", "evidence_count": 0, "last_evaluated_at": None}
-
-    statuses = [r["status"] for r in rows if r["status"]]
-    evidence_count = sum(1 for r in rows if r["evidence_id"])
-    last_evaluated = max(
-        (r["evaluated_at"] for r in rows if r["evaluated_at"]), default=None
-    )
-
-    if not statuses:
-        return {"status": "NOT_TESTED", "evidence_count": 0, "last_evaluated_at": None}
-    if "NEEDS_ATTENTION" in statuses:
-        overall = "NEEDS_ATTENTION"
-    elif "INVALID" in statuses:
-        overall = "INVALID"
-    elif all(s == "OK" for s in statuses):
-        overall = "OK"
-    else:
-        overall = "NEEDS_ATTENTION"
-    return {"status": overall, "evidence_count": evidence_count, "last_evaluated_at": last_evaluated}
-
-
-def _framework_readiness(tenant_id: str, framework_id: str) -> FrameworkReadiness:
-    framework = db.fetchone(
-        "SELECT * FROM framework WHERE id = %s AND tenant_id = %s",
-        (framework_id, tenant_id),
-    )
-    controls = db.execute(
-        """SELECT DISTINCT common_control_id
-           FROM framework_control
-           WHERE framework_id = %s AND tenant_id = %s""",
-        (framework_id, tenant_id),
-    )
-    total = len(controls)
-    if total == 0:
-        return FrameworkReadiness(
-            framework_id=framework_id,
-            code=framework["code"],
-            name=framework["name"],
-            total_controls=0,
-            ok_controls=0,
-            needs_attention_controls=0,
-            readiness_pct=0.0,
-        )
-
-    ok = 0
-    na = 0
-    for c in controls:
-        st = _control_status(tenant_id, c["common_control_id"])
-        if st["status"] == "OK":
-            ok += 1
-        elif st["status"] == "NEEDS_ATTENTION":
-            na += 1
-
-    pct = round((ok / total) * 100, 2) if total > 0 else 0.0
-    return FrameworkReadiness(
-        framework_id=framework_id,
-        code=framework["code"],
-        name=framework["name"],
-        total_controls=total,
-        ok_controls=ok,
-        needs_attention_controls=na,
-        readiness_pct=pct,
-    )
-
-
-def _compute_posture(tenant_id: str) -> PostureSummary:
-    frameworks = db.execute(
-        "SELECT id FROM framework WHERE tenant_id = %s",
-        (tenant_id,),
-    )
-    readiness = [_framework_readiness(tenant_id, f["id"]) for f in frameworks]
-
-    total_controls = db.execute(
-        "SELECT COUNT(*) as c FROM common_control WHERE tenant_id = %s",
-        (tenant_id,),
-    )[0]["c"]
-
-    ok = 0
-    na = 0
-    for cc in db.execute(
-        "SELECT id FROM common_control WHERE tenant_id = %s", (tenant_id,)
-    ):
-        st = _control_status(tenant_id, cc["id"])
-        if st["status"] == "OK":
-            ok += 1
-        elif st["status"] == "NEEDS_ATTENTION":
-            na += 1
-
-    overall_pct = round((ok / total_controls) * 100, 2) if total_controls > 0 else 0.0
-    return PostureSummary(
-        tenant_id=tenant_id,
-        frameworks=readiness,
-        overall_controls=total_controls,
-        overall_ok=ok,
-        overall_needs_attention=na,
-        overall_readiness_pct=overall_pct,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1637,3 +1525,195 @@ def _emit_webhook(tenant_id: str, event: str, payload: dict[str, Any]) -> None:
                 "UPDATE webhook_delivery SET status = 'failed' WHERE id = %s",
                 (delivery_id,),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 - Scale & Intelligence
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/drift")
+def list_drift_detections(
+    acknowledged: bool | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor")
+    return list_drift(db, ctx.tenant_id, acknowledged)
+
+
+@app.post("/api/v1/drift/detect")
+def trigger_drift_detection(
+    integration_id: str = Query(...),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    _get_integration(integration_id, ctx.tenant_id)
+    records = detect_drift_for_integration(db, integration_id, ctx.tenant_id)
+    return {"integration_id": integration_id, "drifts": len(records)}
+
+
+@app.post("/api/v1/drift/{drift_id}/acknowledge")
+def ack_drift(
+    drift_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor")
+    acknowledge_drift(db, drift_id, ctx.tenant_id)
+    return {"id": drift_id, "acknowledged": True}
+
+
+@app.get("/api/v1/evidence/stale/list")
+def list_stale_evidence(
+    hours: int = Query(default=48),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    threshold = _now() - timedelta(hours=hours)
+    return db.execute(
+        """SELECT e.*, t.name as test_name
+           FROM evidence e
+           LEFT JOIN test_result tr ON tr.id = e.test_result_id
+           LEFT JOIN test_run trun ON trun.id = tr.test_run_id
+           LEFT JOIN test t ON t.id = trun.test_id
+           WHERE e.tenant_id = %s
+             AND (e.expires_at IS NULL OR e.expires_at <= %s OR e.collected_at <= %s)
+           ORDER BY e.collected_at ASC""",
+        (ctx.tenant_id, _now(), threshold),
+    )
+
+
+@app.post("/api/v1/evidence/recollect")
+def recollect_evidence(
+    test_id: str | None = Query(default=None),
+    integration_id: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    if test_id:
+        test = db.fetchone(
+            "SELECT * FROM test WHERE id = %s AND tenant_id = %s",
+            (_parse_uuid(test_id), ctx.tenant_id),
+        )
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        run_test(db, dict(test))
+        return {"test_id": test_id, "recollected": True}
+    if integration_id:
+        integration = _get_integration(integration_id, ctx.tenant_id)
+        worker.sync_integration(integration, triggered_by=ctx.user_id)
+        return {"integration_id": integration_id, "recollected": True}
+    raise HTTPException(status_code=400, detail="Provide test_id or integration_id")
+
+
+@app.get("/api/v1/analytics/posture")
+def posture_history(
+    days: int = Query(default=30),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor", "read_only")
+    return db.execute(
+        """SELECT *
+           FROM posture_history
+           WHERE tenant_id = %s AND recorded_at >= %s
+           ORDER BY recorded_at DESC""",
+        (ctx.tenant_id, _now() - timedelta(days=days)),
+    )
+
+
+@app.post("/api/v1/analytics/posture")
+def snapshot_posture(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    posture = compute_posture(ctx.tenant_id)
+    db.execute(
+        """INSERT INTO posture_history
+               (tenant_id, recorded_at, total_controls, ok_controls,
+                needs_attention_controls, readiness_pct)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (
+            ctx.tenant_id,
+            _now(),
+            posture.overall_controls,
+            posture.overall_ok,
+            posture.overall_needs_attention,
+            posture.overall_readiness_pct,
+        ),
+    )
+    return posture
+
+
+@app.get("/api/v1/analytics/trend")
+def control_trend(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "auditor", "read_only")
+    rows = db.execute(
+        """SELECT date_trunc('day', tr.evaluated_at) AS day,
+                  tr.status,
+                  COUNT(*) AS count
+           FROM test_result tr
+           WHERE tr.tenant_id = %s
+           GROUP BY date_trunc('day', tr.evaluated_at), tr.status
+           ORDER BY day DESC, tr.status""",
+        (ctx.tenant_id,),
+    )
+    return {"tenant_id": ctx.tenant_id, "trend": rows}
+
+
+@app.get("/api/v1/scheduler/jobs")
+def list_scheduler_jobs(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    integrations = db.execute(
+        """SELECT id, name, connector, schedule, last_run_at, next_run_at,
+                  'integration' AS job_type
+           FROM integration
+           WHERE tenant_id = %s
+           ORDER BY next_run_at NULLS LAST""",
+        (ctx.tenant_id,),
+    )
+    tests = db.execute(
+        """SELECT id, name, resource_type, schedule, last_run_at, next_run_at,
+                  'test' AS job_type
+           FROM test
+           WHERE tenant_id = %s AND active = true
+           ORDER BY next_run_at NULLS LAST""",
+        (ctx.tenant_id,),
+    )
+    return {"tenant_id": ctx.tenant_id, "integrations": integrations, "tests": tests}
+
+
+@app.post("/api/v1/scheduler/trigger/{job_type}/{job_id}")
+def trigger_scheduler_job(
+    job_type: str,
+    job_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    result = trigger_job_now(db, job_type, job_id)
+    return result
+
+
+@app.post("/api/v1/scheduler/tick")
+def scheduler_tick(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    return run_due_jobs(db)
+
+
+@app.post("/api/v1/ai/suggest-remediation")
+def ai_suggest_remediation(
+    test_result_id: str | None = Query(default=None),
+    control_id: str | None = Query(default=None),
+    finding: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    suggestions = [
+        "Review the affected resource configuration and align it with the control requirement.",
+        "Enable the missing setting or permission and verify with a follow-up test run.",
+        "Rotate any exposed credentials and update evidence records.",
+        "Add a compensating control or policy exception if remediation is not immediate.",
+    ]
+    return {
+        "model": "mock-llm",
+        "suggestions": suggestions,
+        "test_result_id": test_result_id,
+        "control_id": control_id,
+        "finding": finding,
+    }

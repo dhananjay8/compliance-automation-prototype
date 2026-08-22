@@ -8,3 +8,5 @@ httpx
 python-multipart>=0.0.32
 boto3>=1.34
 requests>=2.31
+apscheduler>=3.10
+croniter>=2.0
