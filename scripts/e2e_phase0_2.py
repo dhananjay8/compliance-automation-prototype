@@ -268,7 +268,135 @@ def main() -> None:
     _expect_ok(rag_res, "rag query")
     assert "answer" in rag_res.json() or "not_found" in rag_res.json()
 
-    print("Phase 0-2 E2E: all assertions passed")
+    # Phase 3: remediation workflow
+    rem_res = client.post(
+        "/api/v1/remediations",
+        headers=_headers(user_id),
+        params={
+            "title": "Fix missing MFA",
+            "description": "Ensure all users have MFA enabled",
+            "assignee_email": "alice@example.com",
+        },
+    )
+    _expect_ok(rem_res, "create remediation")
+    rem_id = rem_res.json()["id"]
+
+    status_res = client.post(
+        f"/api/v1/remediations/{rem_id}/status",
+        headers=_headers(user_id),
+        params={"status": "in_progress"},
+    )
+    _expect_ok(status_res, "update remediation status")
+
+    ticket_res = client.post(
+        f"/api/v1/remediations/{rem_id}/ticket",
+        headers=_headers(user_id),
+        params={"ticket_id": "TICKET-123"},
+    )
+    _expect_ok(ticket_res, "attach remediation ticket")
+
+    # Phase 3: access review campaign
+    ar_res = client.post(
+        "/api/v1/access-reviews",
+        headers=_headers(user_id),
+        params={"name": "Q3 Access Review", "due_date": "2025-12-31T00:00:00Z"},
+    )
+    _expect_ok(ar_res, "create access review")
+    ar_id = ar_res.json()["id"]
+
+    item_res = client.post(
+        f"/api/v1/access-reviews/{ar_id}/items",
+        headers=_headers(user_id),
+        params={"user_email": "alice@example.com", "system": "AWS"},
+    )
+    _expect_ok(item_res, "add access review item")
+    item_id = item_res.json()["id"]
+
+    decide_res = client.post(
+        f"/api/v1/access-reviews/{ar_id}/items/{item_id}/decide",
+        headers=_headers(user_id),
+        params={"decision": "approved", "notes": "access still needed"},
+    )
+    _expect_ok(decide_res, "decide access review item")
+
+    # Phase 3: vendor risk questionnaire
+    vendor_res = client.post(
+        "/api/v1/vendors",
+        headers=_headers(user_id),
+        params={"name": "Cloud Vendor", "category": "cloud", "risk_level": "medium"},
+    )
+    _expect_ok(vendor_res, "create vendor")
+    vendor_id = vendor_res.json()["id"]
+
+    assessment_res = client.post(
+        f"/api/v1/vendors/{vendor_id}/assessments",
+        headers=_headers(user_id),
+        params={"questionnaire": '{"q1": "Do you encrypt data at rest?"}'},
+    )
+    _expect_ok(assessment_res, "create vendor assessment")
+    assessment_id = assessment_res.json()["id"]
+
+    respond_res = client.post(
+        f"/api/v1/vendors/{vendor_id}/assessments/{assessment_id}/respond",
+        headers=_headers(user_id),
+        params={"responses": '{"q1": "yes"}'},
+    )
+    _expect_ok(respond_res, "respond vendor assessment")
+
+    # Phase 3: auditor portal / information requests
+    audit_res = client.post(
+        "/api/v1/audits",
+        headers=_headers(user_id),
+        params={"framework_code": "SOC2", "start_date": "2025-01-01", "end_date": "2025-12-31"},
+    )
+    _expect_ok(audit_res, "create audit")
+    audit_id = audit_res.json()["id"]
+
+    req_res = client.post(
+        f"/api/v1/audits/{audit_id}/requests",
+        headers=_headers(user_id),
+        params={"request_text": "Provide MFA evidence"},
+    )
+    _expect_ok(req_res, "create audit request")
+    req_id = req_res.json()["id"]
+
+    resp_res = client.post(
+        f"/api/v1/audits/{audit_id}/requests/{req_id}/respond",
+        headers=_headers(user_id),
+        params={"response_text": "Evidence attached"},
+    )
+    _expect_ok(resp_res, "respond audit request")
+
+    accept_res = client.post(
+        f"/api/v1/audits/{audit_id}/requests/{req_id}/status",
+        headers=_headers(user_id),
+        params={"status": "accepted"},
+    )
+    _expect_ok(accept_res, "accept audit request")
+
+    # Phase 3: webhooks
+    hook_res = client.post(
+        "/api/v1/webhooks",
+        headers=_headers(user_id),
+        params={"url": "https://example.com/webhook", "events": "remediation.created,audit.created"},
+    )
+    _expect_ok(hook_res, "create webhook subscription")
+    hook_id = hook_res.json()["id"]
+
+    client.post(
+        "/api/v1/audits",
+        headers=_headers(user_id),
+        params={"framework_code": "SOC2", "start_date": "2025-01-01", "end_date": "2025-12-31"},
+    )
+
+    deliveries_res = client.get(
+        f"/api/v1/webhooks/{hook_id}/deliveries",
+        headers=_headers(user_id),
+    )
+    _expect_ok(deliveries_res, "list webhook deliveries")
+    assert len(deliveries_res.json()) >= 1, "expected webhook delivery records"
+
+    print("Phase 0-3 E2E: all assertions passed")
 
 
 if __name__ == "__main__":

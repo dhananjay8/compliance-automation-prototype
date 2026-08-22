@@ -308,3 +308,54 @@ CREATE TABLE IF NOT EXISTS rag_query_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rag_query_log_tenant_created ON rag_query_log(tenant_id, created_at);
+
+-- Phase 3: remediation workflows, vendor questionnaires, and webhooks
+CREATE TABLE IF NOT EXISTS remediation (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    test_result_id uuid REFERENCES test_result(id) ON DELETE SET NULL,
+    control_id uuid REFERENCES common_control(id) ON DELETE SET NULL,
+    title text NOT NULL,
+    description text,
+    status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
+    assignee_id uuid REFERENCES "user"(id) ON DELETE SET NULL,
+    ticket_id text,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    resolved_at timestamp with time zone
+);
+
+CREATE INDEX IF NOT EXISTS idx_remediation_tenant_status ON remediation(tenant_id, status);
+
+ALTER TABLE vendor_assessment
+    ADD COLUMN IF NOT EXISTS questionnaire jsonb DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS responses jsonb DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS webhook_subscription (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    url text NOT NULL,
+    events text[] NOT NULL DEFAULT '{}',
+    secret text,
+    active boolean NOT NULL DEFAULT true,
+    created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS webhook_delivery (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    subscription_id uuid NOT NULL REFERENCES webhook_subscription(id) ON DELETE CASCADE,
+    event text NOT NULL,
+    payload jsonb NOT NULL,
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')),
+    response_status integer,
+    delivered_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_subscription_tenant ON webhook_subscription(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_delivery_subscription ON webhook_delivery(subscription_id);
+
+ALTER TABLE audit_request
+    ADD COLUMN IF NOT EXISTS response_text text,
+    ADD COLUMN IF NOT EXISTS evidence_id uuid REFERENCES evidence(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS responded_at timestamp with time zone;

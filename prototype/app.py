@@ -154,6 +154,12 @@ def _parse_uuid(value: str) -> str:
         raise HTTPException(status_code=400, detail=f"Invalid UUID: {value}") from exc
 
 
+def _opt_uuid(value: str | None) -> str | None:
+    if not value:
+        return None
+    return _parse_uuid(value)
+
+
 # ---------------------------------------------------------------------------
 # Tenant / posture
 # ---------------------------------------------------------------------------
@@ -780,63 +786,6 @@ def dashboard_failures(
 
 
 # ---------------------------------------------------------------------------
-# Audits
-# ---------------------------------------------------------------------------
-
-
-@app.get("/api/v1/audits")
-def list_audits(
-    ctx: TenantContext = Depends(get_tenant_context),
-):
-    ctx.require_role("admin", "compliance_manager", "auditor", "external_auditor")
-    return db.execute(
-        """SELECT a.*, f.code as framework_code, f.name as framework_name
-           FROM audit a
-           JOIN framework f ON f.id = a.framework_id
-           WHERE a.tenant_id = %s
-           ORDER BY a.created_at DESC""",
-        (ctx.tenant_id,),
-    )
-
-
-@app.get("/api/v1/audits/{audit_id}/requests", response_model=list[AuditRequestOut])
-def list_audit_requests(
-    audit_id: str,
-    ctx: TenantContext = Depends(get_tenant_context),
-):
-    ctx.require_role("admin", "compliance_manager", "auditor", "external_auditor")
-    _get_audit(audit_id, ctx.tenant_id)
-    rows = db.execute(
-        """SELECT ar.*, cc.code as control_code
-           FROM audit_request ar
-           LEFT JOIN common_control cc ON cc.id = ar.control_id
-           WHERE ar.tenant_id = %s AND ar.audit_id = %s
-           ORDER BY ar.created_at DESC""",
-        (ctx.tenant_id, _parse_uuid(audit_id)),
-    )
-    return [AuditRequestOut(**r) for r in rows]
-
-
-@app.post("/api/v1/audits/{audit_id}/requests", response_model=AuditRequestOut)
-def create_audit_request(
-    audit_id: str,
-    payload: AuditRequestCreate,
-    ctx: TenantContext = Depends(get_tenant_context),
-):
-    ctx.require_role("admin", "compliance_manager", "auditor")
-    _get_audit(audit_id, ctx.tenant_id)
-    request_id = str(uuid.uuid4())
-    db.execute(
-        """INSERT INTO audit_request (id, tenant_id, audit_id, control_id, request_text, status)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
-        (request_id, ctx.tenant_id, _parse_uuid(audit_id),
-         _parse_uuid(payload.control_id) if payload.control_id else None,
-         payload.request_text, "open"),
-    )
-    return _get_audit_request(request_id)
-
-
-# ---------------------------------------------------------------------------
 # Policies
 # ---------------------------------------------------------------------------
 
@@ -1180,3 +1129,511 @@ def _compute_posture(tenant_id: str) -> PostureSummary:
         overall_needs_attention=na,
         overall_readiness_pct=overall_pct,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 - Remediation workflows
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/remediations")
+def list_remediations(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    return db.execute(
+        """SELECT r.*, u.email as assignee_email, cc.code as control_code
+           FROM remediation r
+           LEFT JOIN "user" u ON u.id = r.assignee_id
+           LEFT JOIN common_control cc ON cc.id = r.control_id
+           WHERE r.tenant_id = %s
+           ORDER BY r.created_at DESC""",
+        (ctx.tenant_id,),
+    )
+
+
+@app.post("/api/v1/remediations")
+def create_remediation(
+    title: str = Query(...),
+    description: str = Query(default=""),
+    test_result_id: str | None = Query(default=None),
+    control_id: str | None = Query(default=None),
+    assignee_email: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    assignee_id = None
+    if assignee_email:
+        user = db.fetchone(
+            'SELECT id FROM "user" WHERE tenant_id = %s AND email = %s',
+            (ctx.tenant_id, assignee_email),
+        )
+        if user:
+            assignee_id = user["id"]
+    rem_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO remediation
+               (id, tenant_id, test_result_id, control_id, title, description, assignee_id, status)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, 'open')""",
+        (
+            rem_id,
+            ctx.tenant_id,
+            _opt_uuid(test_result_id),
+            _opt_uuid(control_id),
+            title,
+            description,
+            assignee_id,
+        ),
+    )
+    _emit_webhook(ctx.tenant_id, "remediation.created", {"id": rem_id, "title": title, "status": "open"})
+    return db.fetchone("SELECT * FROM remediation WHERE id = %s", (rem_id,))
+
+
+@app.post("/api/v1/remediations/{remediation_id}/status")
+def update_remediation_status(
+    remediation_id: str,
+    status: str = Query(...),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    if status not in ("open", "in_progress", "resolved", "closed"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    resolved_at: datetime | None = None
+    if status in ("resolved", "closed"):
+        resolved_at = _now()
+    db.execute(
+        "UPDATE remediation SET status = %s, resolved_at = %s WHERE id = %s AND tenant_id = %s",
+        (status, resolved_at, _parse_uuid(remediation_id), ctx.tenant_id),
+    )
+    _emit_webhook(
+        ctx.tenant_id,
+        "remediation.status_changed",
+        {"id": remediation_id, "status": status},
+    )
+    return db.fetchone("SELECT * FROM remediation WHERE id = %s", (_parse_uuid(remediation_id),))
+
+
+@app.post("/api/v1/remediations/{remediation_id}/ticket")
+def attach_remediation_ticket(
+    remediation_id: str,
+    ticket_id: str = Query(...),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    db.execute(
+        "UPDATE remediation SET ticket_id = %s WHERE id = %s AND tenant_id = %s",
+        (ticket_id, _parse_uuid(remediation_id), ctx.tenant_id),
+    )
+    return db.fetchone("SELECT * FROM remediation WHERE id = %s", (_parse_uuid(remediation_id),))
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 - Access review campaigns
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/access-reviews")
+def list_access_reviews(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return db.execute(
+        "SELECT * FROM access_review WHERE tenant_id = %s ORDER BY due_date",
+        (ctx.tenant_id,),
+    )
+
+
+@app.post("/api/v1/access-reviews")
+def create_access_review(
+    name: str = Query(...),
+    due_date: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    ar_id = str(uuid.uuid4())
+    db.execute(
+        "INSERT INTO access_review (id, tenant_id, name, due_date) VALUES (%s, %s, %s, %s)",
+        (ar_id, ctx.tenant_id, name, due_date),
+    )
+    _emit_webhook(ctx.tenant_id, "access_review.created", {"id": ar_id, "name": name})
+    return db.fetchone("SELECT * FROM access_review WHERE id = %s", (ar_id,))
+
+
+@app.get("/api/v1/access-reviews/{access_review_id}/items")
+def list_access_review_items(
+    access_review_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return db.execute(
+        """SELECT i.*, u.email as user_email
+           FROM access_review_item i
+           LEFT JOIN "user" u ON u.id = i.user_id
+           WHERE i.access_review_id = %s AND i.tenant_id = %s""",
+        (_parse_uuid(access_review_id), ctx.tenant_id),
+    )
+
+
+@app.post("/api/v1/access-reviews/{access_review_id}/items")
+def add_access_review_item(
+    access_review_id: str,
+    user_email: str = Query(...),
+    system: str = Query(...),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    user = db.fetchone(
+        'SELECT id FROM "user" WHERE tenant_id = %s AND email = %s',
+        (ctx.tenant_id, user_email),
+    )
+    user_id = user["id"] if user else None
+    item_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO access_review_item
+               (id, tenant_id, access_review_id, user_id, system, decision)
+           VALUES (%s, %s, %s, %s, %s, 'pending')""",
+        (item_id, ctx.tenant_id, _parse_uuid(access_review_id), user_id, system),
+    )
+    return db.fetchone("SELECT * FROM access_review_item WHERE id = %s", (item_id,))
+
+
+@app.post("/api/v1/access-reviews/{access_review_id}/items/{item_id}/decide")
+def decide_access_review_item(
+    access_review_id: str,
+    item_id: str,
+    decision: str = Query(...),
+    notes: str = Query(default=""),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    if decision not in ("approved", "revoked"):
+        raise HTTPException(status_code=400, detail="Invalid decision")
+    db.execute(
+        """UPDATE access_review_item
+           SET decision = %s, notes = %s
+           WHERE id = %s AND access_review_id = %s AND tenant_id = %s""",
+        (decision, notes, _parse_uuid(item_id), _parse_uuid(access_review_id), ctx.tenant_id),
+    )
+    _emit_webhook(
+        ctx.tenant_id,
+        "access_review.decided",
+        {"access_review_id": access_review_id, "item_id": item_id, "decision": decision},
+    )
+    return db.fetchone("SELECT * FROM access_review_item WHERE id = %s", (_parse_uuid(item_id),))
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 - Vendor risk questionnaires
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/vendors")
+def list_vendors(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return db.execute("SELECT * FROM vendor WHERE tenant_id = %s", (ctx.tenant_id,))
+
+
+@app.post("/api/v1/vendors")
+def create_vendor(
+    name: str = Query(...),
+    category: str = Query(default=""),
+    risk_level: str = Query(default="medium"),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    if risk_level not in ("low", "medium", "high", "critical"):
+        raise HTTPException(status_code=400, detail="Invalid risk_level")
+    vendor_id = str(uuid.uuid4())
+    db.execute(
+        "INSERT INTO vendor (id, tenant_id, name, category, risk_level) VALUES (%s, %s, %s, %s, %s)",
+        (vendor_id, ctx.tenant_id, name, category, risk_level),
+    )
+    return db.fetchone("SELECT * FROM vendor WHERE id = %s", (vendor_id,))
+
+
+@app.get("/api/v1/vendors/{vendor_id}/assessments")
+def list_vendor_assessments(
+    vendor_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return db.execute(
+        "SELECT * FROM vendor_assessment WHERE vendor_id = %s AND tenant_id = %s",
+        (_parse_uuid(vendor_id), ctx.tenant_id),
+    )
+
+
+@app.post("/api/v1/vendors/{vendor_id}/assessments")
+def create_vendor_assessment(
+    vendor_id: str,
+    questionnaire: str = Query(default=""),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    assessment_id = str(uuid.uuid4())
+    parsed = json.loads(questionnaire) if questionnaire else {}
+    db.execute(
+        """INSERT INTO vendor_assessment
+               (id, tenant_id, vendor_id, questionnaire, status)
+           VALUES (%s, %s, %s, %s, 'pending')""",
+        (assessment_id, ctx.tenant_id, _parse_uuid(vendor_id), json.dumps(parsed)),
+    )
+    return db.fetchone("SELECT * FROM vendor_assessment WHERE id = %s", (assessment_id,))
+
+
+@app.post("/api/v1/vendors/{vendor_id}/assessments/{assessment_id}/respond")
+def respond_vendor_assessment(
+    vendor_id: str,
+    assessment_id: str,
+    responses: str = Query(default=""),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    parsed = json.loads(responses) if responses else {}
+    db.execute(
+        """UPDATE vendor_assessment
+           SET responses = %s, status = 'complete', completed_at = %s
+           WHERE id = %s AND vendor_id = %s AND tenant_id = %s""",
+        (json.dumps(parsed), _now(), _parse_uuid(assessment_id), _parse_uuid(vendor_id), ctx.tenant_id),
+    )
+    _emit_webhook(
+        ctx.tenant_id,
+        "vendor_assessment.completed",
+        {"vendor_id": vendor_id, "assessment_id": assessment_id},
+    )
+    return db.fetchone("SELECT * FROM vendor_assessment WHERE id = %s", (_parse_uuid(assessment_id),))
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 - Auditor portal / information requests
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/audits")
+def list_audits(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return db.execute(
+        """SELECT a.*, f.code as framework_code
+           FROM audit a
+           JOIN framework f ON f.id = a.framework_id
+           WHERE a.tenant_id = %s""",
+        (ctx.tenant_id,),
+    )
+
+
+@app.post("/api/v1/audits")
+def create_audit(
+    framework_code: str = Query(...),
+    auditor_email: str | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager")
+    framework = db.fetchone(
+        "SELECT id FROM framework WHERE tenant_id = %s AND code = %s",
+        (ctx.tenant_id, framework_code),
+    )
+    if not framework:
+        raise HTTPException(status_code=404, detail="Framework not found")
+    auditor_id = None
+    if auditor_email:
+        user = db.fetchone(
+            'SELECT id FROM "user" WHERE tenant_id = %s AND email = %s',
+            (ctx.tenant_id, auditor_email),
+        )
+        if user:
+            auditor_id = user["id"]
+    audit_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO audit (id, tenant_id, framework_id, auditor_id, start_date, end_date)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (audit_id, ctx.tenant_id, framework["id"], auditor_id, start_date, end_date),
+    )
+    _emit_webhook(ctx.tenant_id, "audit.created", {"id": audit_id, "framework_code": framework_code})
+    return db.fetchone("SELECT * FROM audit WHERE id = %s", (audit_id,))
+
+
+@app.get("/api/v1/audits/{audit_id}/requests")
+def list_audit_requests(
+    audit_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return db.execute(
+        """SELECT ar.*, cc.code as control_code
+           FROM audit_request ar
+           LEFT JOIN common_control cc ON cc.id = ar.control_id
+           WHERE ar.audit_id = %s AND ar.tenant_id = %s""",
+        (_parse_uuid(audit_id), ctx.tenant_id),
+    )
+
+
+@app.post("/api/v1/audits/{audit_id}/requests")
+def create_audit_request(
+    audit_id: str,
+    request_text: str = Query(...),
+    control_id: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    req_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO audit_request
+               (id, tenant_id, audit_id, control_id, request_text)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (req_id, ctx.tenant_id, _parse_uuid(audit_id), _opt_uuid(control_id), request_text),
+    )
+    _emit_webhook(
+        ctx.tenant_id,
+        "audit_request.created",
+        {"audit_id": audit_id, "request_id": req_id},
+    )
+    return db.fetchone("SELECT * FROM audit_request WHERE id = %s", (req_id,))
+
+
+@app.post("/api/v1/audits/{audit_id}/requests/{request_id}/respond")
+def respond_audit_request(
+    audit_id: str,
+    request_id: str,
+    response_text: str = Query(...),
+    evidence_id: str | None = Query(default=None),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "control_owner")
+    db.execute(
+        """UPDATE audit_request
+           SET status = 'responded', response_text = %s, evidence_id = %s, responded_at = %s
+           WHERE id = %s AND audit_id = %s AND tenant_id = %s""",
+        (
+            response_text,
+            _opt_uuid(evidence_id),
+            _now(),
+            _parse_uuid(request_id),
+            _parse_uuid(audit_id),
+            ctx.tenant_id,
+        ),
+    )
+    _emit_webhook(
+        ctx.tenant_id,
+        "audit_request.responded",
+        {"audit_id": audit_id, "request_id": request_id},
+    )
+    return db.fetchone("SELECT * FROM audit_request WHERE id = %s", (_parse_uuid(request_id),))
+
+
+@app.post("/api/v1/audits/{audit_id}/requests/{request_id}/status")
+def update_audit_request_status(
+    audit_id: str,
+    request_id: str,
+    status: str = Query(...),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    if status not in ("open", "responded", "accepted", "flagged"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    db.execute(
+        """UPDATE audit_request
+           SET status = %s
+           WHERE id = %s AND audit_id = %s AND tenant_id = %s""",
+        (status, _parse_uuid(request_id), _parse_uuid(audit_id), ctx.tenant_id),
+    )
+    _emit_webhook(
+        ctx.tenant_id,
+        "audit_request.status_changed",
+        {"audit_id": audit_id, "request_id": request_id, "status": status},
+    )
+    return db.fetchone("SELECT * FROM audit_request WHERE id = %s", (_parse_uuid(request_id),))
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 - Webhooks / public API surface
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/webhooks")
+def list_webhooks(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin")
+    return db.execute(
+        "SELECT * FROM webhook_subscription WHERE tenant_id = %s",
+        (ctx.tenant_id,),
+    )
+
+
+@app.post("/api/v1/webhooks")
+def create_webhook(
+    url: str = Query(...),
+    events: str = Query(default=""),
+    secret: str = Query(default=""),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin")
+    sub_id = str(uuid.uuid4())
+    event_list = [e.strip() for e in events.split(",") if e.strip()]
+    db.execute(
+        """INSERT INTO webhook_subscription (id, tenant_id, url, events, secret)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (sub_id, ctx.tenant_id, url, event_list, secret),
+    )
+    return db.fetchone("SELECT * FROM webhook_subscription WHERE id = %s", (sub_id,))
+
+
+@app.delete("/api/v1/webhooks/{subscription_id}")
+def delete_webhook(
+    subscription_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin")
+    db.execute(
+        "DELETE FROM webhook_subscription WHERE id = %s AND tenant_id = %s",
+        (_parse_uuid(subscription_id), ctx.tenant_id),
+    )
+    return {"deleted": True}
+
+
+@app.get("/api/v1/webhooks/{subscription_id}/deliveries")
+def list_webhook_deliveries(
+    subscription_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    ctx.require_role("admin")
+    return db.execute(
+        """SELECT * FROM webhook_delivery
+           WHERE subscription_id = %s AND tenant_id = %s
+           ORDER BY created_at DESC""",
+        (_parse_uuid(subscription_id), ctx.tenant_id),
+    )
+
+
+def _emit_webhook(tenant_id: str, event: str, payload: dict[str, Any]) -> None:
+    """Deliver a webhook event to active subscriptions. Failures are logged only."""
+    subs = db.execute(
+        """SELECT * FROM webhook_subscription
+           WHERE tenant_id = %s AND active = true
+             AND (cardinality(events) = 0 OR %s = ANY(events))""",
+        (tenant_id, event),
+    )
+    for sub in subs:
+        delivery_id = str(uuid.uuid4())
+        db.execute(
+            """INSERT INTO webhook_delivery
+                   (id, tenant_id, subscription_id, event, payload, status)
+               VALUES (%s, %s, %s, %s, %s, 'pending')""",
+            (delivery_id, tenant_id, sub["id"], event, json.dumps(payload)),
+        )
+        try:
+            import requests
+
+            body = {"event": event, "payload": payload}
+            headers = {"Content-Type": "application/json"}
+            if sub.get("secret"):
+                headers["X-Webhook-Secret"] = sub["secret"]
+            resp = requests.post(sub["url"], json=body, headers=headers, timeout=5)
+            status = "delivered" if resp.status_code < 400 else "failed"
+            db.execute(
+                """UPDATE webhook_delivery
+                   SET status = %s, response_status = %s, delivered_at = %s
+                   WHERE id = %s""",
+                (status, resp.status_code, _now(), delivery_id),
+            )
+        except Exception:
+            db.execute(
+                "UPDATE webhook_delivery SET status = 'failed' WHERE id = %s",
+                (delivery_id,),
+            )
