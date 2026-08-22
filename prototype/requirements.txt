@@ -6,3 +6,5 @@ pyjwt>=2.13
 pytest
 httpx
 python-multipart>=0.0.32
+boto3>=1.34
+requests>=2.31
