@@ -412,3 +412,19 @@ ALTER TABLE integration
 ALTER TABLE test
     ADD COLUMN IF NOT EXISTS last_run_at timestamp with time zone,
     ADD COLUMN IF NOT EXISTS next_run_at timestamp with time zone;
+
+-- Production auth: per-tenant OIDC SSO + SCIM configuration (secrets stored encrypted, see crypto.py)
+ALTER TABLE tenant
+    ADD COLUMN IF NOT EXISTS sso_config jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- Multi-tenancy / data residency: tag data-at-rest with the owning tenant's region
+-- so residency boundaries can be enforced and audited (see app.py `_enforce_region`
+-- and `GET /api/v1/compliance/data-residency`).
+ALTER TABLE resource
+    ADD COLUMN IF NOT EXISTS region text;
+
+ALTER TABLE evidence
+    ADD COLUMN IF NOT EXISTS region text;
+
+CREATE INDEX IF NOT EXISTS idx_resource_region ON resource(tenant_id, region);
+CREATE INDEX IF NOT EXISTS idx_evidence_region ON evidence(tenant_id, region);

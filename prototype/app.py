@@ -12,12 +12,8 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Reques
 from fastapi.middleware.cors import CORSMiddleware
 
 from auth import TenantContext, get_tenant_context, issue_token, require_admin_role
-from connectors import (
-    AWSConnector,
-    AWSCredentials,
-    OktaConnector,
-    OktaCredentials,
-)
+from connectors import build_connector, list_connector_catalog, create_jira_ticket, create_servicenow_incident
+from crypto import encrypt_credentials, resolve_credentials
 from db import db
 from engine import evaluate_rule
 from models import (
@@ -37,6 +33,23 @@ from worker import SyncWorker, run_test
 from rag import RAGQuery, RAGResponse, RAGIndexRequest, rag as rag_service
 from drift import detect_drift_for_integration, list_drift, acknowledge_drift
 from scheduler import ComplianceScheduler, ENABLE_SCHEDULER, run_due_jobs, trigger_job_now
+from security import security_middleware
+from queue_backend import enqueue_sync, enqueue_test_run, queue_status
+from risk import build_risk_graph, predict_drift_risk
+from ai import suggest_remediation
+from sso import (
+    OIDCCallbackRequest,
+    ScimUserCreate,
+    SSOConfigRequest,
+    build_authorize_url,
+    exchange_code_for_token,
+    save_sso_config,
+    scim_authenticate,
+    scim_create_user,
+    scim_deactivate_user,
+    scim_list_users,
+)
+from residency import region_enforcement_middleware, data_residency_report
 
 
 @asynccontextmanager
@@ -61,6 +74,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(security_middleware)
+app.middleware("http")(region_enforcement_middleware)
 worker = SyncWorker(db)
 
 AUDITABLE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
@@ -193,6 +208,88 @@ def auth_token(
     return {"token": issue_token(tenant_id, user_id, role)}
 
 
+# ---------------------------------------------------------------------------
+# SSO (OIDC) + SCIM provisioning
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/tenants/{tenant_id}/sso-config")
+def configure_sso(
+    tenant_id: str,
+    payload: SSOConfigRequest,
+    _: None = Depends(require_admin_role),
+):
+    save_sso_config(tenant_id, payload)
+    return {"tenant_id": tenant_id, "configured": True}
+
+
+@app.get("/api/v1/auth/sso/{tenant_id}/login")
+def sso_login(tenant_id: str):
+    state = str(uuid.uuid4())
+    try:
+        url = build_authorize_url(tenant_id, state)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not reach SSO provider: {exc}")
+    return {"authorize_url": url, "state": state}
+
+
+@app.post("/api/v1/auth/sso/{tenant_id}/callback")
+def sso_callback(tenant_id: str, payload: OIDCCallbackRequest):
+    try:
+        return exchange_code_for_token(tenant_id, payload.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SSO provider error: {exc}")
+
+
+def _scim_tenant(x_tenant_id: str | None, authorization: str | None) -> str:
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="Missing X-Tenant-Id header")
+    try:
+        scim_authenticate(x_tenant_id, authorization)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    return x_tenant_id
+
+
+@app.post("/scim/v2/Users", status_code=201)
+def scim_create(
+    payload: ScimUserCreate,
+    x_tenant_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    tenant_id = _scim_tenant(x_tenant_id, authorization)
+    return scim_create_user(tenant_id, payload)
+
+
+@app.get("/scim/v2/Users")
+def scim_list(
+    x_tenant_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    tenant_id = _scim_tenant(x_tenant_id, authorization)
+    users = scim_list_users(tenant_id)
+    return {
+        "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+        "totalResults": len(users),
+        "Resources": users,
+    }
+
+
+@app.patch("/scim/v2/Users/{user_id}")
+def scim_patch(
+    user_id: str,
+    active: bool = Query(...),
+    x_tenant_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    tenant_id = _scim_tenant(x_tenant_id, authorization)
+    return scim_deactivate_user(tenant_id, _parse_uuid(user_id), active)
+
+
 @app.get("/api/v1/tenants/{tenant_id}/readiness", response_model=PostureSummary)
 def tenant_readiness(
     tenant_id: str,
@@ -214,13 +311,20 @@ def create_integration(
 ):
     ctx.require_role("admin", "compliance_manager")
     integration_id = str(uuid.uuid4())
+    encrypted = encrypt_credentials(payload.credentials)
     db.execute(
         """INSERT INTO integration (id, tenant_id, connector, name, config, credentials, status)
            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
         (integration_id, ctx.tenant_id, payload.connector, payload.name,
-         json.dumps(payload.config), json.dumps(payload.credentials), "pending"),
+         json.dumps(payload.config), json.dumps(encrypted), "pending"),
     )
     return _integration_row(integration_id, ctx.tenant_id)
+
+
+@app.get("/api/v1/connectors/catalog")
+def connector_catalog(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return list_connector_catalog()
 
 
 @app.get("/api/v1/integrations")
@@ -244,27 +348,18 @@ def sync_integration(
 ):
     ctx.require_role("admin", "compliance_manager", "control_owner")
     integration = _get_integration(integration_id, ctx.tenant_id)
+    result = enqueue_sync(integration_id, ctx.tenant_id, triggered_by=ctx.user_id)
+    if result.get("queued"):
+        return {"sync_job_id": None, "queue_job_id": result["job_id"], "queued": True}
     job_id = worker.sync_integration(integration, triggered_by=ctx.user_id)
-    return {"sync_job_id": job_id}
+    return {"sync_job_id": job_id, "queued": False}
 
 
-def _connector_credentials(integration: dict[str, Any]) -> tuple[AWSConnector | OktaConnector, str]:
-    connector = integration["connector"].lower()
-    credentials = integration.get("credentials") or {}
-    if connector == "aws":
-        creds = AWSCredentials(
-            access_key_id=credentials.get("access_key_id"),
-            secret_access_key=credentials.get("secret_access_key"),
-            region=credentials.get("region"),
-        )
-        return AWSConnector(creds), "aws"
-    elif connector == "okta":
-        creds = OktaCredentials(
-            api_token=credentials.get("api_token"),
-            base_url=credentials.get("base_url"),
-        )
-        return OktaConnector(creds), "okta"
-    return None, connector
+def _connector_credentials(integration: dict[str, Any]):
+    connector_name = integration["connector"].lower()
+    credentials = resolve_credentials(integration.get("credentials"))
+    connector = build_connector(connector_name, credentials)
+    return connector, connector_name
 
 
 @app.get("/api/v1/integrations/{integration_id}", response_model=IntegrationOut)
@@ -790,6 +885,12 @@ def dashboard_failures(
     return {"tenant_id": ctx.tenant_id, "failing_results": rows}
 
 
+@app.get("/api/v1/compliance/data-residency")
+def compliance_data_residency(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "auditor")
+    return data_residency_report(ctx.tenant_id)
+
+
 # ---------------------------------------------------------------------------
 # Policies
 # ---------------------------------------------------------------------------
@@ -1111,6 +1212,51 @@ def attach_remediation_ticket(
         (ticket_id, _parse_uuid(remediation_id), ctx.tenant_id),
     )
     return db.fetchone("SELECT * FROM remediation WHERE id = %s", (_parse_uuid(remediation_id),))
+
+
+@app.post("/api/v1/remediations/{remediation_id}/ticket/auto")
+def auto_create_remediation_ticket(
+    remediation_id: str,
+    system: str = Query(default="jira", description="'jira' or 'servicenow'"),
+    project_key: str = Query(default="OPS"),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Create a real ticket via the tenant's configured Jira/ServiceNow integration.
+
+    Falls back to a deterministic mock ticket id if no matching integration is
+    configured or the live API call fails, so the workflow never blocks.
+    """
+    ctx.require_role("admin", "compliance_manager")
+    remediation = db.fetchone(
+        "SELECT * FROM remediation WHERE id = %s AND tenant_id = %s",
+        (_parse_uuid(remediation_id), ctx.tenant_id),
+    )
+    if not remediation:
+        raise HTTPException(status_code=404, detail="Remediation not found")
+
+    integration = db.fetchone(
+        "SELECT * FROM integration WHERE tenant_id = %s AND connector = %s ORDER BY created_at DESC LIMIT 1",
+        (ctx.tenant_id, system.lower()),
+    )
+    creds = resolve_credentials(integration.get("credentials")) if integration else {}
+
+    summary = remediation["title"]
+    description = remediation.get("description") or summary
+    if system.lower() == "servicenow":
+        ticket = create_servicenow_incident(
+            creds.get("instance_url"), creds.get("username"), creds.get("password"), summary, description
+        )
+    else:
+        ticket = create_jira_ticket(
+            creds.get("base_url"), creds.get("email"), creds.get("api_token"), project_key, summary, description
+        )
+
+    db.execute(
+        "UPDATE remediation SET ticket_id = %s WHERE id = %s AND tenant_id = %s",
+        (ticket["ticket_id"], _parse_uuid(remediation_id), ctx.tenant_id),
+    )
+    _emit_webhook(ctx.tenant_id, "remediation.ticket_created", {"id": remediation_id, **ticket})
+    return {**db.fetchone("SELECT * FROM remediation WHERE id = %s", (_parse_uuid(remediation_id),)), "ticket_meta": ticket}
 
 
 # ---------------------------------------------------------------------------
@@ -1552,6 +1698,24 @@ def trigger_drift_detection(
     return {"integration_id": integration_id, "drifts": len(records)}
 
 
+@app.get("/api/v1/risk/graph")
+def risk_graph(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return build_risk_graph(db, ctx.tenant_id)
+
+
+@app.get("/api/v1/risk/predict")
+def risk_predict(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return predict_drift_risk(db, ctx.tenant_id)
+
+
+@app.get("/api/v1/queue/status")
+def queue_status_endpoint(ctx: TenantContext = Depends(get_tenant_context)):
+    ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
+    return queue_status()
+
+
 @app.post("/api/v1/drift/{drift_id}/acknowledge")
 def ack_drift(
     drift_id: str,
@@ -1704,16 +1868,4 @@ def ai_suggest_remediation(
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     ctx.require_role("admin", "compliance_manager", "control_owner", "auditor", "read_only")
-    suggestions = [
-        "Review the affected resource configuration and align it with the control requirement.",
-        "Enable the missing setting or permission and verify with a follow-up test run.",
-        "Rotate any exposed credentials and update evidence records.",
-        "Add a compensating control or policy exception if remediation is not immediate.",
-    ]
-    return {
-        "model": "mock-llm",
-        "suggestions": suggestions,
-        "test_result_id": test_result_id,
-        "control_id": control_id,
-        "finding": finding,
-    }
+    return suggest_remediation(finding, control_id=control_id, test_result_id=test_result_id)

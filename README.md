@@ -101,6 +101,16 @@ By default, `auth.py` validates the `X-User-Id` header against the `user` table.
 - `X-User-Id` (optional)
 - `X-User-Role` (`admin`, `compliance_manager`, `control_owner`, `auditor`, `read_only`, `external_auditor`)
 
+## Environment variables
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ENCRYPTION_KEY` | Fernet key used to encrypt integration credentials at rest (`prototype/crypto.py`). **Must** be set in production. | derived dev-only key |
+| `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_ENABLED` | Per-tenant/IP API rate limit (`prototype/security.py`) | `300` / `1` |
+| `ENABLE_QUEUE` / `REDIS_URL` | Route sync jobs through a Redis/RQ distributed queue (`prototype/queue_backend.py`, `queue_worker.py`) instead of running in-process | `0` (disabled) / `redis://localhost:6379/0` |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | Enable real LLM-backed remediation suggestions (`prototype/ai.py`) | unset (mock suggestions) |
+| `GITHUB_API_TOKEN`, `SLACK_BOT_TOKEN`, `JIRA_*`, `SERVICENOW_*`, etc. | Per-connector credentials (see `prototype/connectors/extra.py`); all connectors also accept credentials via the `POST /api/v1/integrations` payload | unset (mock data) |
+
 ## Public sources used
 
 Public Vanta engineering blogs, developer docs, integration guides, and the open Vanta control set informed this design. URLs are listed in `docs/01-case-study.md`.

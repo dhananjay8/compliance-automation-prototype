@@ -17,17 +17,46 @@ This document tracks what is currently built in the `prototype/` directory versu
   - Audit logging middleware writing to `audit_log`
 - **Database schema** (`prototype/schema.sql`)
   - All core tables: tenant, organization, user, framework, section, common_control, framework_control, control_test, test, test_run, resource, test_result, evidence, policy, access_review, vendor, audit, audit_log, and RAG index tables
+  - Phase 3 tables/columns: remediation, webhook subscriptions/deliveries, vendor questionnaires/responses, audit request responses
+  - Phase 4 tables/columns: drift detection, resource baselines, posture history, integration/test schedule metadata
 - **Rule engine** (`prototype/engine.py`)
   - Operators: `eq`, `ne`, `in`, `not_in`, `gt`, `lt`, `gte`, `lte`, `exists`, `and`, `or`
   - Nested field support
 - **Connectors** (`prototype/connectors/`)
-  - `AWSConnector` lists live IAM users and EC2 instances via `boto3` when credentials are configured; falls back to mock samples on errors or missing credentials
-  - `OktaConnector` lists live users and factors via `requests` when token + base URL are configured; falls back to mock samples on errors or missing credentials
-  - Health checks verify live connectivity with STS and `/api/v1/users`
+  - 15 connectors registered generically in `CONNECTOR_REGISTRY` (`connectors/__init__.py`): AWS, Okta, GitHub, GitLab, Slack, Google Workspace, Microsoft 365/Azure AD, Jira, ServiceNow, PagerDuty, Datadog, Zoom, Salesforce, Snyk, Tenable.io
+  - Each connector makes a real API call via `boto3`/`requests` when credentials are configured; falls back to deterministic mock samples on errors or missing credentials
+  - `build_connector()`/`list_connector_catalog()` let `app.py`/`worker.py` resolve any connector generically (no per-connector if/elif chains); exposed to the frontend via `GET /api/v1/connectors/catalog`
+  - Health checks verify live connectivity per-provider
 - **Worker** (`prototype/worker.py`)
-  - Connector SDK wired: `AWSConnector` and `OktaConnector` are used when no real credentials are present
-  - Resource upsert with content hashing
-  - Test execution and evidence insertion
+  - Connector SDK wired generically via the registry, with graceful fallback to sample resources
+  - Resource upsert with content hashing and data-residency region tagging
+  - Test execution and evidence insertion (also region-tagged)
+- **Credential encryption** (`prototype/crypto.py`)
+  - Integration credentials are encrypted at rest with Fernet before being persisted; decrypted only in-memory when a connector needs to make a live call (`resolve_credentials`)
+- **Distributed queue** (`prototype/queue_backend.py`, `prototype/queue_worker.py`)
+  - Sync jobs are enqueued to Redis/RQ when `ENABLE_QUEUE=1`, processed by one or more `queue_worker.py` processes; falls back to synchronous in-process execution otherwise
+  - `GET /api/v1/queue/status` reports queue connectivity/depth
+- **Risk graph & predictive drift** (`prototype/risk.py`)
+  - `GET /api/v1/risk/graph` builds an integration→resource risk graph (via `networkx`) weighted by drift severity/recency
+  - `GET /api/v1/risk/predict` scores each integration's near-term drift risk from 7-day vs prior-7-day trend
+- **AI remediation suggestions** (`prototype/ai.py`)
+  - Calls a real OpenAI chat completion when `OPENAI_API_KEY` is set; falls back to a mock suggestion list otherwise
+- **SSO / SCIM** (`prototype/sso.py`)
+  - OIDC authorization-code login (`/api/v1/auth/sso/{tenant_id}/login|callback`) with live JWKS signature verification against the configured issuer
+  - SCIM 2.0 user provisioning (`/scim/v2/Users`) authenticated with a per-tenant bearer token
+- **Ticketing integrations** (`connectors/extra.py`, `POST /api/v1/remediations/{id}/ticket/auto`)
+  - Creates a real Jira issue or ServiceNow incident via the tenant's configured integration; falls back to a mock ticket id if unconfigured/unreachable
+- **Data residency & security hardening** (`prototype/residency.py`, `prototype/security.py`)
+  - Resources/evidence tagged with the owning tenant's region at write time; `GET /api/v1/compliance/data-residency` reports the breakdown; requests declaring a mismatched `X-Region` are rejected with 403
+  - Rate limiting (per-tenant/IP sliding window) and standard security response headers (HSTS, CSP, X-Frame-Options, etc.) applied to all `/api/*` requests
+- **Drift engine** (`prototype/drift.py`)
+  - Baseline-based drift detection for added/removed/changed resources
+  - Severity assignment and acknowledgement flow support
+- **Scheduler** (`prototype/scheduler.py`)
+  - In-process APScheduler ticker for due sync/test execution
+  - Stores `last_run_at`/`next_run_at` on integrations and tests
+- **Analytics** (`prototype/analytics.py`)
+  - Shared readiness/posture computation used by dashboard, scheduler, and analytics endpoints
 - **RAG service** (`prototype/rag.py`)
   - Query classification, entity extraction, SQL-first retrieval, keyword trigram fallback
   - Context builder with citations and MockLLMProvider
@@ -36,7 +65,7 @@ This document tracks what is currently built in the `prototype/` directory versu
 - **Local test flows**
   - `podman/test.sh` (Podman PostgreSQL + Redis, schema load, seed, DB count assertions)
   - `docker-compose.yml` (Docker Compose Postgres + Redis + FastAPI)
-  - `scripts/e2e_phase0_2.py` (Phase 0-2 end-to-end smoke test)
+  - `scripts/e2e_phase0_2.py` (Phase 0-4 end-to-end smoke test; filename retained for backward compatibility)
 - **Unit tests** (`prototype/tests/`)
   - RAG, rule engine, and auth (mock mode + JWT)
 - **Frontend** (`frontend/`)
@@ -49,17 +78,17 @@ This document tracks what is currently built in the `prototype/` directory versu
 ## Not yet implemented
 
 - **Full-stack build prompt**: `prompts/build-prototype.md` still describes the original Node/Express/Prisma/React spec
-- **Production auth**: SSO, SAML/OIDC, SCIM, and field-level encryption
-- **Production-grade async queue**: No BullMQ, Kafka, SQS, or Redis-backed worker queue; current scheduler runs in-process with APScheduler
-- **Production ticketing integrations**: No Jira / ServiceNow adapters; only ticket ID attachment
-- **Multi-tenancy features**: No regional cells, data residency, or tenant-scoped connection pools
+- **SAML SSO**: only OIDC is implemented; SAML is not
+- **Physical multi-region database partitioning**: data residency is currently enforced/tagged at the application layer against a single database, not a physically-partitioned regional cluster
 - **Cross-resource joins**: `engine.py` evaluates one resource at a time
-- **15+ production connectors**: Only AWS and Okta connectors are implemented
+- **Trained ML risk model**: the risk graph/predictive scoring in `prototype/risk.py` is a deterministic statistical heuristic, not a trained model
+- **Formal secrets manager integration**: `ENCRYPTION_KEY` is an env var; production should source it from KMS/Vault
+- **Penetration testing / formal compliance audit / GA sign-off**
 
 ## Roadmap mapping
 
-- **Phase 0** (Foundation): largely complete — schema, JWT token support, header and DB auth, RBAC, and audit logging are implemented
+- **Phase 0** (Foundation): complete — schema, JWT token support, header and DB auth, RBAC, audit logging, OIDC SSO, SCIM provisioning, and credential encryption at rest are implemented
 - **Phase 1** (MVP ingestion + SOC 2): complete — real AWS/Okta adapters, frontend, connector SDK, integration health, sync wiring, dashboards, and evidence collection are implemented
 - **Phase 2** (Multi-framework + custom controls): largely complete — custom control creation, framework mapping lookup, policy management, acknowledgements, and manual evidence upload are implemented
-- **Phase 3** (Workflows + audit portal): largely complete — remediation workflows, access review campaigns, vendor risk questionnaires, auditor portal with information requests, webhook subscriptions/deliveries, and frontend coverage are implemented
-- **Phase 4** (Scale + intelligence): largely complete — drift detection engine, evidence freshness monitoring, in-process scheduler for recurring sync/tests, posture history/trend analytics, mock AI remediation suggestions, and frontend Intelligence view are implemented
+- **Phase 3** (Workflows + audit portal): complete — remediation workflows, access review campaigns, vendor risk questionnaires, auditor portal with information requests, webhook subscriptions/deliveries, real Jira/ServiceNow ticketing, and frontend coverage are implemented
+- **Phase 4** (Scale + intelligence): largely complete (prototype scope) — drift detection engine, evidence freshness monitoring, in-process scheduler + optional distributed Redis/RQ queue, posture history/trend analytics, 15-connector registry, risk graph/predictive drift, real LLM remediation suggestions, data-residency tagging/enforcement, rate limiting/security headers, and frontend Intelligence view are implemented

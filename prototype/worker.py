@@ -6,12 +6,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from connectors import (
-    AWSConnector,
-    AWSCredentials,
-    OktaConnector,
-    OktaCredentials,
-)
+from connectors import build_connector
+from crypto import resolve_credentials
 from db import Database
 from drift import detect_drift_for_integration
 from engine import evaluate_rule
@@ -27,6 +23,7 @@ class SyncWorker:
         integration_id = integration["id"]
         connector = integration["connector"]
         job_id = str(uuid.uuid4())
+        tenant_region = _tenant_region(self.db, tenant_id)
 
         self.db.execute(
             """INSERT INTO sync_job (id, tenant_id, integration_id, triggered_by, mode, status, started_at)
@@ -53,15 +50,16 @@ class SyncWorker:
                 external_id = r.get("external_id", r["id"])
 
                 self.db.execute(
-                    """INSERT INTO resource (id, tenant_id, integration_id, resource_type_id, external_id, data, collected_at, hash)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """INSERT INTO resource (id, tenant_id, integration_id, resource_type_id, external_id, data, collected_at, hash, region)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (tenant_id, integration_id, external_id)
                        DO UPDATE SET data = EXCLUDED.data,
                                      collected_at = EXCLUDED.collected_at,
-                                     hash = EXCLUDED.hash""",
+                                     hash = EXCLUDED.hash,
+                                     region = EXCLUDED.region""",
                     (str(uuid.uuid5(uuid.NAMESPACE_URL, f"{tenant_id}:{integration_id}:{external_id}")),
                      tenant_id, integration_id, rt_id, external_id,
-                     json.dumps(data), collected_at, data_hash),
+                     json.dumps(data), collected_at, data_hash, tenant_region),
                 )
 
             self.db.execute(
@@ -109,25 +107,12 @@ class SyncWorker:
         return job_id
 
     def _fetch_resources(self, integration: dict[str, Any]) -> list[dict[str, Any]]:
-        connector = integration["connector"].lower()
-        credentials = integration.get("credentials") or {}
-        if connector == "aws":
-            creds = AWSCredentials(
-                access_key_id=credentials.get("access_key_id"),
-                secret_access_key=credentials.get("secret_access_key"),
-                region=credentials.get("region"),
-            )
-            records = AWSConnector(creds).list_resources()
-        elif connector == "okta":
-            creds = OktaCredentials(
-                api_token=credentials.get("api_token"),
-                base_url=credentials.get("base_url"),
-            )
-            records = OktaConnector(creds).list_resources()
-        else:
-            records = []
+        connector_name = integration["connector"].lower()
+        credentials = resolve_credentials(integration.get("credentials"))
+        connector = build_connector(connector_name, credentials)
+        records = connector.list_resources() if connector else []
         if not records:
-            return self._mock_resources_for_connector(connector)
+            return self._mock_resources_for_connector(connector_name)
         return [
             {
                 "external_id": r.external_id,
@@ -188,6 +173,7 @@ def run_test(db: Database, test: dict[str, Any]) -> TestRunSummary:
     )
 
     resource_type = test["resource_type"]
+    tenant_region = _tenant_region(db, tenant_id)
     resources = db.execute(
         """SELECT r.*, rt.name as resource_type_name
            FROM resource r
@@ -219,9 +205,9 @@ def run_test(db: Database, test: dict[str, Any]) -> TestRunSummary:
         evidence_type = "api_response" if status == "OK" else "snapshot"
         expires_at = _now() + timedelta(days=7)
         db.execute(
-            """INSERT INTO evidence (id, tenant_id, test_result_id, evidence_type, description, collected_at, expires_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (str(uuid.uuid4()), tenant_id, result_id, evidence_type, reason, _now(), expires_at),
+            """INSERT INTO evidence (id, tenant_id, test_result_id, evidence_type, description, collected_at, expires_at, region)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (str(uuid.uuid4()), tenant_id, result_id, evidence_type, reason, _now(), expires_at, tenant_region),
         )
 
     db.execute(
@@ -240,6 +226,11 @@ def run_test(db: Database, test: dict[str, Any]) -> TestRunSummary:
         needs_attention=needs_attention,
         invalid=invalid,
     )
+
+
+def _tenant_region(db: Database, tenant_id: str) -> str:
+    row = db.fetchone("SELECT region FROM tenant WHERE id = %s", (tenant_id,))
+    return (row or {}).get("region") or "us"
 
 
 def _repo_root() -> Path:
